@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "outbreak-game"
+version = "0.1.0"
+description = "OUTBREAK - a zombie survival roguelike with selectable era, zombie type and objective."
+requires-python = ">=3.9"
+dependencies = ["windows-curses; platform_system == 'Windows'"]
+
+[project.scripts]
+outbreak = "outbreak.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
