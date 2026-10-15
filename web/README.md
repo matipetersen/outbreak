@@ -80,3 +80,11 @@ of the database (`test/fakedb.js`); the real database was only exercised by publ
 
 The run autosaves to the browser's local storage (every 100 turns, when the page is hidden, and from the
 menu). If the browser blocks storage the game tells you and plays without saving.
+
+## GitHub Pages (play from your phone)
+
+`.github/workflows/pages.yml` builds the game, runs the engine tests and publishes `web/_site` (made by `web/pages.py`:
+`index.html`, a real web manifest, icons and a service worker) on every push to `main`. One-time setup: repo
+**Settings -> Pages -> Source: GitHub Actions**. Then open `https://<user>.github.io/outbreak/` on the phone and use
+"Add to Home Screen" for a fullscreen, offline app. Saves live in that browser's local storage; the Shared world
+mode needs claude.ai and does not work on Pages.
