@@ -103,8 +103,7 @@ function freeRect() {
 function layoutOverlays() {
   const ch = $('#controls').hidden ? 0 : $('#controls').offsetHeight;
   const hh = $('#hud').hidden ? 0 : $('#hud').offsetHeight;
-  $('#log').style.bottom = (ch + 6) + 'px';
-  $('#alert').style.bottom = (ch + 6 + $('#log').offsetHeight + 8) + 'px';
+  $('#alert').style.bottom = (ch + 14) + 'px';
   $('#aim').style.top = (hh + 6) + 'px';
   $('#toast').style.top = (hh + 8) + 'px';
 }
@@ -479,19 +478,22 @@ function updateHud() {
   if (g.final) add(g.final.exit ? `GET OUT: ${g.final.exit_name}` : `HOLD OUT ${g.final.turns_left}`, 'danger');
   if (g.ring && g.ring.active) add('Tide closing', 'warn');
   const objs = g.objectives(), next = objs.find((o) => !o[1]) || objs[objs.length - 1];
-  $('#goal').innerHTML = ''; $('#goal').append(el('b', null, 'Goal '), next ? next[0] : '', el('span', 'dim', g.director ? ` · Act ${g.director.stage + 1} ${DIR_STAGES[g.director.stage].title}` : ''));
+  $('#goal').innerHTML = ''; $('#goal').append(el('b', null, 'Goal '), next ? next[0] : '', '');
   layoutOverlays();
 }
 
-let logAll = false;
+// No message log on the play screen: only the one thing that matters most from what just happened is shown, briefly, as a toast.
+// Everything stays in the Journal (menu).
+let feedSeen = 0;
+const FEED_RANK = { bad: 4, warn: 4, obj: 3, dir: 3, ally: 2, good: 2, lore: 1 };
 function renderLog() {
-  const box = $('#log'); box.innerHTML = '';
-  const recent = (logAll || !game.story.length ? game.log : game.story_log()).slice(-3);
-  recent.forEach((m, i) => { const d = el('div', 't-' + m[2], m[1]); d.style.opacity = String(0.72 + 0.14 * (i + (3 - recent.length))); box.append(d); });
+  if (feedSeen > game.log.length) feedSeen = game.log.length;
+  let best = null, rank = 0;
+  for (const m of game.log.slice(feedSeen)) { const r = FEED_RANK[m[2]] || 0; if (r && r >= rank) { best = m; rank = r; } }
+  feedSeen = game.log.length;
+  if (best) toast(best[1], 't-' + best[2], rank >= 3 ? 3600 : 2400);
   layoutOverlays();
 }
-
-$('#log').addEventListener('click', () => { if (!game || modal) return; logAll = !logAll; toast(logAll ? 'Log: everything' : 'Log: objectives, companion, key events'); renderLog(); });
 
 function updateControls() {
   const g = game, p = g.player;
@@ -510,9 +512,9 @@ function updateControls() {
 }
 
 let toastTimer = null;
-function toast(text) {
-  const t = $('#toast'); t.textContent = text; t.classList.add('on');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 1900);
+function toast(text, cls, ms) {
+  const t = $('#toast'); t.textContent = text; t.className = (cls || '') + ' on';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), ms || 1900);
 }
 function vibrate(ms) { if (prefs.haptics) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { /* unsupported */ } } }
 function flash() { const f = $('#flash'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); }
@@ -1296,8 +1298,8 @@ function showEvent() {
 }
 
 // ---------------------------------------------------------------- screens: title, new game, ending
-function hideAll() { for (const id of ['#title', '#newgame', '#ending']) $(id).hidden = true; for (const id of ['#hud', '#log', '#controls', '#alert', '#aim']) $(id).hidden = true; }
-function showGameUi() { hideAll(); $('#hud').hidden = false; $('#log').hidden = false; $('#controls').hidden = false; resize(); refresh(); }
+function hideAll() { for (const id of ['#title', '#newgame', '#ending']) $(id).hidden = true; for (const id of ['#hud', '#controls', '#alert', '#aim']) $(id).hidden = true; }
+function showGameUi() { hideAll(); $('#hud').hidden = false; $('#controls').hidden = false; resize(); refresh(); }
 
 function trySave() {
   if (!game || game.over) return false;
@@ -1406,7 +1408,7 @@ function startGame(cfg, loaded, shared) {
   game.on_autosave = () => { trySave(); };
   endingShown = false; aim = null; travel = null; pathPreview = null; modal = 0;
   lastHp = game.player.hp; camX = game.player.x + .5; camY = game.player.y + .5;
-  logSeen = game.log.length; lvlSeen = game.player.level; audio_set_playing(true, game);
+  logSeen = feedSeen = game.log.length; lvlSeen = game.player.level; audio_set_playing(true, game);
   showGameUi();
   trySave();
   if (!loaded) showBriefing(0, true);
@@ -1444,8 +1446,10 @@ function showEnding(skipCut = false) {
   w.append(el('div', 'fileno', 'Score'), el('div', 'score', String(e.score)));
   if (!g.record_saved) { g.record_saved = true; try { g.record_lines = submit_record(g, recordStore); } catch (err) { g.record_lines = []; } }
   if (g.record_lines && g.record_lines.length) w.append(el('div', 'sum', g.record_lines.map((l) => el('div', null, l))));
-  if (e.chronicle && e.chronicle.length) w.append(el('div', 'fileno', e.victory ? 'How you survived' : 'How it went'), el('ol', 'chron', e.chronicle.slice(-40).map((l) => el('li', null, l))));
-  if (e.last_moments && e.last_moments.length) w.append(el('div', 'fileno', 'The last moments'), el('div', 'chron last', e.last_moments.map((l) => el('div', null, l))));
+  const more = el('div', null); more.hidden = true;
+  if (e.chronicle && e.chronicle.length) more.append(el('div', 'fileno', e.victory ? 'How you survived' : 'How it went'), el('ol', 'chron', e.chronicle.slice(-40).map((l) => el('li', null, l))));
+  if (e.last_moments && e.last_moments.length) more.append(el('div', 'fileno', 'The last moments'), el('div', 'chron last', e.last_moments.map((l) => el('div', null, l))));
+  if (more.childNodes.length) { const tg = btn('btn', 'Show the full story', () => { more.hidden = !more.hidden; tg.textContent = more.hidden ? 'Show the full story' : 'Hide the full story'; }); tg.style.marginTop = '12px'; w.append(tg, more); }
   const m = el('div', 'menu'); m.style.marginTop = '20px';
   if (isShared) m.append(btn('btn main', 'Back to the shared world', () => { game = null; showSharedWorld(); }), btn('btn', 'Title screen', () => { game = null; showTitle(); }));
   else m.append(btn('btn main', 'New game', () => { game = null; showNewGame(); }), btn('btn', 'Title screen', () => { game = null; showTitle(); }));
