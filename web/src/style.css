@@ -74,10 +74,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .act.primary:active { background: #f0b445; }
 
 /* ---------- toast and sheet */
-#toast { position: absolute; left: 50%; transform: translateX(-50%); max-width: 84%; padding: 8px 14px; border-radius: 8px; background: var(--panel);
-  border: 1px solid var(--line); font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; text-align: center; }
-#toast.on { opacity: 1; }
-#toast { box-shadow: 0 4px 18px rgba(0,0,0,.5); line-height: 1.3; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+#toast { box-sizing: border-box; position: absolute; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); padding: 10px 14px; border-radius: 10px; background: var(--panel);
+  border: 1px solid var(--line); box-shadow: 0 4px 18px rgba(0,0,0,.5); font-size: 14px; line-height: 1.4; opacity: 0; pointer-events: none; transition: opacity .2s;
+  text-align: center; text-wrap: balance; overflow-wrap: anywhere; max-height: 40%; overflow-y: auto; z-index: 5; }
+#toast.on { opacity: 1; pointer-events: auto; }
+#toast div + div { margin-top: 5px; }
 #scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
 #sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 88%; display: flex; flex-direction: column; background: var(--panel);
   border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; box-shadow: 0 -10px 40px rgba(0,0,0,.5); animation: rise .18s ease-out; }

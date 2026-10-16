@@ -482,16 +482,20 @@ function updateHud() {
   layoutOverlays();
 }
 
-// No message log on the play screen: only the one thing that matters most from what just happened is shown, briefly, as a toast.
+// No message log on the play screen: what just happened is shown briefly as a card under the HUD (a burst, like an act title plus
+// its cue, stays together and is shown whole; the card stays up as long as it takes to read, and a tap closes it).
 // Everything stays in the Journal (menu).
 let feedSeen = 0;
 const FEED_RANK = { bad: 4, warn: 4, obj: 3, dir: 3, ally: 2, good: 2, lore: 1 };
 function renderLog() {
   if (feedSeen > game.log.length) feedSeen = game.log.length;
-  let best = null, rank = 0;
-  for (const m of game.log.slice(feedSeen)) { const r = FEED_RANK[m[2]] || 0; if (r && r >= rank) { best = m; rank = r; } }
+  const fresh = game.log.slice(feedSeen).filter((m) => FEED_RANK[m[2]]);
   feedSeen = game.log.length;
-  if (best) toast(best[1], 't-' + best[2], rank >= 3 ? 3600 : 2400);
+  if (fresh.length) {
+    const top = Math.max(...fresh.map((m) => FEED_RANK[m[2]]));
+    const keep = fresh.filter((m) => FEED_RANK[m[2]] >= Math.min(top, 3)).slice(-3);
+    toastCard(keep.map((m) => [m[1], 't-' + m[2]]));
+  }
   layoutOverlays();
 }
 
@@ -512,10 +516,15 @@ function updateControls() {
 }
 
 let toastTimer = null;
-function toast(text, cls, ms) {
-  const t = $('#toast'); t.textContent = text; t.className = (cls || '') + ' on';
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), ms || 1900);
+function toast(text, cls, ms) { toastCard([[text, cls || '']], ms); }
+// lines: [[text, class], ...]; shown whole (the card grows), for a time that scales with the reading length.
+function toastCard(lines, ms) {
+  const t = $('#toast'); t.className = 'on'; t.textContent = '';
+  let chars = 0;
+  for (const [text, cls] of lines) { t.append(el('div', cls, text)); chars += text.length; }
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), ms || Math.max(2200, 1400 + chars * 55));
 }
+$('#toast').addEventListener('click', () => { clearTimeout(toastTimer); $('#toast').classList.remove('on'); });
 function vibrate(ms) { if (prefs.haptics) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { /* unsupported */ } } }
 function flash() { const f = $('#flash'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); }
 
