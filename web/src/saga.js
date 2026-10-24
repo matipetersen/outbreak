@@ -59,7 +59,7 @@ const saga_base_poi = (game) => (game.base_id ? game.pois[game.base_id.split(':'
 function saga_capacity(game) { const lv = saga_base_level(game); return lv ? 1 + 2 * Object.values(lv.built).filter((v) => v === 'cot').length : 0; }
 
 function saga_setup(game) {
-  if (!game.scenario.escalates || game.cfg.mode === 'shared') return;
+  if (!game.scenario.escalates) return;
   game.saga = { phase: 0, factions: {}, outposts: {}, residents: [], rid: 0, progress: {}, built: [], building: '', events: [], queue: [],
                 next_event: 240 + game.rng.randint(60, 200), special_boost: 0, research: 0, warlord: null, refuge_fallen: false, done: [],
                 log: [], deserted: false, refugees_at: 240 * 4 };

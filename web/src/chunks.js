@@ -38,7 +38,7 @@ function _populate_chunk(game, cx, cy) {
   game.gen_day = 1;                                  // stats do not depend on when the chunk is first seen
   const x0 = cx * S, y0 = cy * S, x1 = Math.min(lv.w, x0 + S), y1 = Math.min(lv.h, y0 + S);
   const dead = game.dead_uids;
-  const keep = (a) => { if (dead.has(a.uid)) lv.remove_actor(a); else if (game.shared) catch_up_actor(game, a); return a; };
+  const keep = (a) => { if (dead.has(a.uid)) lv.remove_actor(a); return a; };
   try {
     const scale = prof.density * game.diff.zombies;
     const entry = world.by_chunk.get(chunk_key(cx, cy)) || { pois: [], camps: [] };

@@ -57,7 +57,7 @@ class Game {
     if (!CONTENT.scenarios[c.scenario]) throw new Error('unknown scenario ' + c.scenario);
     if (!CONTENT.origins[c.origin]) throw new Error('unknown origin ' + c.origin);
     if (c.opening !== 'random' && !CONTENT.openings[c.opening]) throw new Error('unknown opening ' + c.opening);
-    if (c.mode !== 'normal' && c.mode !== 'living' && c.mode !== 'shared') throw new Error('unknown mode ' + c.mode);
+    if (c.mode !== 'normal' && c.mode !== 'living') throw new Error('unknown mode ' + c.mode);
     if (!CONTENT.difficulties[c.difficulty]) throw new Error('unknown difficulty ' + c.difficulty);
     if (c.map_w < 100 || c.map_h < 64) throw new Error('map too small (minimum 100x64)');
     this._init_state();
@@ -76,7 +76,7 @@ class Game {
     this.patrol_goals = {}; this.distress = {}; this.aided = {};
     this.live_started = false; this.paused = false; this.busy = 0; this.rest_left = 0; this.sleep_left = 0; this.live_acc = 0; this.live_last = 0; this.invuln_until = 0;
     this.gen_day = 0; this.dead_uids = new Set(); this.deadline_days = 0; this.lost_turns = 0; this.incidents = [];
-    this.shared = null; this.season_n = 0; this.world_uid_max = 0; this.pending_shared = {}; this.applied_tombs = {}; this.tomb_at = {}; this.named_state = {}; this.taken_components = []; this.season_reset = false;
+    this.world_uid_max = 0;
     this.regions = []; this.region_id = -1; this.checkpoints = {}; this.foraged = [];
     this.marks = []; this.nemeses = []; this.pet_uid = 0; this.companion_uid = 0; this.fallen_allies = []; this.story = []; this.objective_seen = {};
     this.weather = 'clear'; this.sources = []; this.alarmed = []; this.last_step_note = -999; this.pings = []; this.flash_turn = -999;
@@ -148,7 +148,6 @@ class Game {
     if (this.over) return;
     if ((kind === 'dead' || kind === 'turned') && this.cfg.mode !== 'normal') { player_died(this, kind, cause); return; }   // the world goes on
     this.over = build_ending(this, kind, cause);
-    if (this.shared && (kind === 'won' || kind === 'left_behind')) this.shared.on_outcome(kind === 'won' ? 'won' : 'lost');
   }
   make_hostile(h) {
     if (h.hostile) return;
@@ -232,24 +231,15 @@ class Game {
   // for as many ticks as it costs, so the world never waits for you. Until `start_live` the game is turn-based (tests, normal mode).
   get live() { return this.live_started; }
   ready() { return !this.live_started || this.busy <= 0; }
-  tick_ms() { return (this.shared && this.shared.season.tickMs) || this.cfg.tick_ms || 700; }
-  start_live(now) { this.live_started = true; this.live_last = now; this.live_acc = 0; this.busy = 0; if (this.shared) this.shared.sync_calendar(); }
+  tick_ms() { return this.cfg.tick_ms || 700; }
+  start_live(now) { this.live_started = true; this.live_last = now; this.live_acc = 0; this.busy = 0; }
   // Run the ticks that real time owes the world. Returns how many ran.
   live_update(now) {
     if (!this.live_started || this.over) return 0;
     const tm = this.tick_ms();
-    let n;
     if (this.paused) { this.live_last = now; return 0; }
-    if (this.shared) {
-      const target = Math.floor((now - this.shared.season.startedAt) / tm);
-      n = target - this.clock.turn;
-      if (n > LIVE_MAX_CATCHUP) {                         // the page was away: the world moved on without playing out every tick
-        this.clock.turn = target - 3; n = 3; this.shared.sync_calendar();
-      }
-    } else {
-      this.live_acc += Math.min(Math.max(0, now - this.live_last), 3000); this.live_last = now;
-      n = Math.floor(this.live_acc / tm); this.live_acc -= n * tm;
-    }
+    this.live_acc += Math.min(Math.max(0, now - this.live_last), 3000); this.live_last = now;
+    const n = Math.floor(this.live_acc / tm); this.live_acc -= n * tm;
     let ran = 0;
     for (let i = 0; i < n && !this.over; i++) {
       if (this.busy > 0) this.busy--;
@@ -295,7 +285,6 @@ class Game {
     wanderers(this);
     this._followers();
     this._rising_dead();
-    if (this.shared) this.shared.tick(this);
     this._heat();
     this.pings = this.pings.filter((q) => t - q.turn <= 6);
     if (t % 5 === 0) mutation_crossing(this);
@@ -490,9 +479,7 @@ class Game {
         delete lv.corpses[k];
         const fk = `${lv.id}|${k}`, fallen = this.fallen_bodies[fk];
         if (fallen) delete this.fallen_bodies[fk];
-        if (fallen && fallen.tomb_id && this.shared && this.named_state[`t_${fallen.tomb_id}`]) continue;   // the shared world already decided
         const z = fallen ? make_fallen(this, lv, [x, y], fallen) : spawn_zombie(this, lv, [x, y], 'walker', false, true);
-        if (fallen && fallen.tomb_id && this.shared) this.shared.on_fallen_rise(z, fallen.tomb_id);
         z.fresh_human = false; z.state = 'hunt'; z.target = [this.player.x, this.player.y]; z.stimulus_turn = t;
         if (this.is_visible(x, y)) this.msg('A body twitches, and rises.', 'warn');
       }
@@ -649,7 +636,6 @@ class Game {
     for (const z of lv.actors) z.birth_day = game_day(this);
     if (poi.kind === 'refuge') this._populate_refuge(lv);
     front_on_level_created(this, lv, poi); saga_on_level_created(this, lv, poi);
-    if (this.shared) this.shared.on_level_created(lv);
     return lv;
   }
 

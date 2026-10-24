@@ -15,7 +15,7 @@ function base(g, cots = 2) {
 }
 const stash = (g, lv, id, qty) => lv.stash.push(OB.make_item(id, qty));
 
-{ // only in endless, never in the shared world; a handful of outposts, every faction somewhere
+{ // only in endless; a handful of outposts, every faction somewhere
   const g = world();
   assert(g.saga && !make({ scenario: 'cure', seed: 3 }).saga && !make({ scenario: 'dash', seed: 3 }).saga);
   const os = Object.values(g.saga.outposts);

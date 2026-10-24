@@ -471,12 +471,11 @@ the first turn; `B` re-reads it.
   maximum 15). Big hordes keep every zombie instead of dropping the ones that do not fit on screen.
 
 The web build also has a much larger map (360x240) planned whole and painted by chunks as you approach (see
-`web/README.md`); the terminal game keeps its fixed 120x76 map. In the web build the hardcore modes run in **real time** (no turns), and there is a third mode, a **shared world** with seasons
-that the keeper resets; see `web/README.md`. Those are web only (real time and the artifact database).
+`web/README.md`); the terminal game keeps its fixed 120x76 map. In the web build hardcore runs in **real time** (no turns); see `web/README.md`.
 
 **Random**: era, the dead, objective, who you are and mode can each be set to `random` (the new-game screen has a Random
 option on each choice and a "random everything" entry; `--era random` ... or `--random` on the command line). It is drawn when
-the game starts, reproducibly if you also give a seed, and the log says what came up. The shared world is never drawn.
+the game starts, reproducibly if you also give a seed, and the log says what came up.
 
 ## How it plays
 

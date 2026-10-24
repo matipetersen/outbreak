@@ -28,40 +28,24 @@ function setup_game(game) {
   game.opening_id = opening.id;
   let start_hour = opening.hour;
   if (game.profile.sun_burn) start_hour = Math.min(start_hour, 10);   // sun-shy dead: keep a whole safe day to loot
-  const shared = cfg.mode === 'shared';
-  game.clock = new Clock(shared ? cfg.clock_turn : start_hour * CONTENT.clock.turns_per_hour);
-  game.season_n = cfg.season_n || 0;
+  game.clock = new Clock(start_hour * CONTENT.clock.turns_per_hour);
   _make_player(game);
-  if (!shared) _apply_opening(game, opening);          // shared: after the world is built, so the world never depends on who you are
+  _apply_opening(game, opening);
   _setup_scenario(game);
   mutation_build(game);
   _setup_documents(game);
   _populate(game);
   front_setup(game);
   saga_setup(game);
-  if (!shared) comp_spawn_start(game);
-  if (!game.profile.sun_burn && !shared) start_ring(game);
-  if (shared) _become_survivor(game, opening);
+  comp_spawn_start(game);
+  if (!game.profile.sun_burn) start_ring(game);
   _intro(game);
 }
 
 function _make_player(game) {
-  const origin = game.cfg.mode === 'shared' ? 'medic' : game.cfg.origin;      // shared world: a stand-in until the world exists
+  const origin = game.cfg.origin;
   game.current_origin = origin;
   make_player(game, origin, game.world.start);
-}
-
-// Shared world: swap the stand-in for the real survivor, who always arrives at the refuge.
-function _become_survivor(game, opening) {
-  const dummy = game.player, lv = game.world.level;
-  game.world_uid_max = game._uid;      // legacy; chunked worlds mark their actors by uid range
-  lv.occ.delete(lv.idx(dummy.x, dummy.y));
-  const refuge = game.pois[game.refuge_id];
-  gen_near(game, refuge.x, refuge.y);
-  const pos = lv.free_spot_near(refuge.x, refuge.y + 2, 8) || lv.free_spot_near(game.world.start[0], game.world.start[1], 8);
-  game.current_origin = game.cfg.origin;
-  make_player(game, game.cfg.origin, pos);
-  _apply_opening(game, opening);
 }
 
 // A fresh character with an origin's perks and kit, placed at `pos` on the overworld.

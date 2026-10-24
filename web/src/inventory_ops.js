@@ -217,11 +217,7 @@ function search_container(game, pos) {
   if (c.coins) { p.coins += c.coins; found.push(`${c.coins} ${game.era.coin}`); }
   if (c.note === 'vault') {
     const comp = game.vault_component(lv);
-    if (comp && game.taken_components.includes(comp)) game.msg('The vault is empty. Somebody got here first.', 'warn');
-    else if (comp) {
-      game.give_item(make_item(comp, 1)); game.msg(`You found the ${game.item_def(comp).name}!`, 'good'); p.gain_xp(40);
-      if (game.shared) { game.taken_components.push(comp); game.shared.on_component_taken(comp); }
-    }
+    if (comp) { game.give_item(make_item(comp, 1)); game.msg(`You found the ${game.item_def(comp).name}!`, 'good'); p.gain_xp(40); }
   }
   for (const doc_id of c.docs) game.collect_document(doc_id);
   game.msg(found.length ? 'You search the crate: ' + found.join(', ') + '.' : 'You search the crate. Nothing useful.', 'info');

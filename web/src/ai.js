@@ -435,7 +435,7 @@ function _abstract_fight(game, members) {
     if (power < cost) break;
     power -= cost; killed++;
     if (a.kind === 'zombie') kill_zombie(game, a, false, false, lead);
-    else { if (game.shared) game.shared.on_enemy_death(a); lv.remove_actor(a); lv.corpses[lv.idx(a.x, a.y)] = [game.clock.turn, true]; grant_xp(game, lead, 12); }
+    else { lv.remove_actor(a); lv.corpses[lv.idx(a.x, a.y)] = [game.clock.turn, true]; grant_xp(game, lead, 12); }
   }
   for (const h of hordes.slice()) {
     const n = Math.min(h.size, Math.floor(power / 0.9));
