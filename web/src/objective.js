@@ -5,7 +5,7 @@ function objective_snapshot(game) {
   const snap = {};
   for (const [n, done, hint] of game.requirements()) snap[n] = [done, hint];
   const site = game.pois[game.final_site_id];
-  snap[cap(game.scenario.final_verb)] = [false, site.revealed ? site.name : 'location unknown'];
+  if (!game.saga) snap[cap(game.scenario.final_verb)] = [false, site.revealed ? site.name : 'location unknown'];      // endless: how it ends is up to you
   return snap;
 }
 

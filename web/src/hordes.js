@@ -100,7 +100,7 @@ function wanderers(game) {
   if (game.level !== game.world.level || game.clock.turn % 25) return;
   const prof = game.profile;
   if (prof.sun_burn && game.clock.is_day) return;
-  let chance = 0.22 * profile_phase(prof, game_day(game)).spawn * game.diff.zombies * prof.density * game.pressure * dir_scale(game);
+  let chance = 0.22 * profile_phase(prof, game_day(game)).spawn * game.diff.zombies * prof.density * game.pressure * dir_scale(game) * saga_mod(game, 'wander');
   if (game.clock.is_night) chance *= 1.5;
   chance += game.heat / 400.0;
   if (game.rng.random() >= chance) return;

@@ -61,6 +61,8 @@ function line(a, b) {
   return out;
 }
 
+const game_day = (g) => g.gen_day || g.clock.day;
+
 function weighted_choice(rng, pairs) {          // pairs: [[value, weight], ...]
   let total = 0;
   for (const p of pairs) if (p[1] > 0) total += p[1];
