@@ -610,27 +610,35 @@ function aimTap(tx, ty) {
 }
 
 function cancelTravel() { if (travel) { clearTimeout(travel.timer); travel = null; pathPreview = null; dirty = true; } }
-function startTravel(path) {
-  travel = { path, i: 0, timer: 0 }; pathPreview = path; stepTravel();
+// Walking a tapped route works the same with or without enemies around: it only stops when you arrive, when you are hurt,
+// when you change level, or when you tap again. If something steps into the way, the route is planned again around it.
+function startTravel(path, goal) {
+  const end = path[path.length - 1];
+  travel = { path, i: 0, timer: 0, goal: goal || end }; pathPreview = path; stepTravel();
 }
 function stepTravel() {
   if (!travel) return;
-  const g = game, p = g.player;
+  const g = game, p = g.player, lv = g.level;
   if (g.over || g.pending_event || modal) { cancelTravel(); return; }
-  if (g.visible_hostiles().length) { toast('Enemy in view'); cancelTravel(); return; }
   if (g.live && !g.ready()) { travel.timer = setTimeout(stepTravel, 40); return; }
-  const next = travel.path[travel.i];
+  let next = travel.path[travel.i];
+  if (next && lv.occ.has(lv.idx(next[0], next[1])) && !(next[0] === travel.goal[0] && next[1] === travel.goal[1])) {
+    const again = route(travel.goal[0], travel.goal[1]);
+    if (!again || !again.length) { cancelTravel(); return; }
+    travel.path = again; travel.i = 0; next = again[0];
+  }
   const dx = next[0] - p.x, dy = next[1] - p.y;
   if (Math.max(Math.abs(dx), Math.abs(dy)) !== 1) { cancelTravel(); return; }
-  const logN = g.log.length, hp = p.hp, lvl = g.level.id;
+  const target = lv.occ.get(lv.idx(next[0], next[1]));
+  if (target && target !== p) { cancelTravel(); return; }       // never walk into someone by accident: the next tap decides
+  const hp = p.hp, lvl = lv.id;
   const ok = g.move(dx, dy);
   afterAction();
   if (!travel) return;
   if (!ok) { cancelTravel(); return; }
   travel.i++;
   pathPreview = travel.path.slice(travel.i);
-  const alarming = g.log.slice(logN).some((m) => m[2] === 'bad' || m[2] === 'warn');
-  if (travel.i >= travel.path.length || p.hp < hp || alarming || g.level.id !== lvl) { cancelTravel(); return; }
+  if (travel.i >= travel.path.length || p.hp < hp || g.level.id !== lvl) { cancelTravel(); return; }
   travel.timer = setTimeout(stepTravel, 75);
 }
 function route(tx, ty) {
@@ -673,12 +681,14 @@ function onTap(sx, sy) {
     if (d <= 1) doAction(() => g.move(dx, dy));
     else if (is_ranged(w) && d <= w.reach) doAction(() => g.fire(a));
     else if (w.reach > 1 && d <= w.reach) doAction(() => g.attack(a));
-    else toast('Out of reach');
+    else if (prefs.travel) {                                      // too far to hit: walk up to it, the next tap strikes
+      const path = route(tx, ty);
+      if (path && path.length > 1) startTravel(path.slice(0, -1), [tx, ty]); else toast('No route there');
+    } else toast('Out of reach');
     return;
   }
   if (d === 1) { doAction(() => g.move(dx, dy)); return; }
   if (!prefs.travel) { toast('Tap-to-travel is off'); return; }
-  if (g.visible_hostiles().length) { toast('Enemies nearby: move with the pad'); return; }
   const path = route(tx, ty);
   if (!path || !path.length) { toast(lv.seen[lv.idx(tx, ty)] ? 'No route there' : 'Unexplored'); return; }
   startTravel(path);
@@ -693,9 +703,24 @@ function onLongPress(sx, sy) {
 // ---------------------------------------------------------------- touch input on the map
 const pts = new Map();
 let pinch = null, press = null, moved = false;
+// Apple Pencil: once a pen has touched the screen, a palm resting on it is ignored. A finger that lands while the pen is down,
+// or within a moment of it, is not a tap, not a long press and not half of a pinch.
+const PALM_WINDOW = 900;
+let penSeen = 0, penDown = false;
+const isPalm = (e) => e.pointerType === 'touch' && (penDown || performance.now() - penSeen < PALM_WINDOW);
+const notePen = (e) => { if (e.pointerType === 'pen') penSeen = performance.now(); };
+document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'pen') { penDown = true; notePen(e); }
+  else if (isPalm(e)) { e.stopPropagation(); e.preventDefault(); }      // keeps the palm off the pad and the buttons too
+}, true);
+document.addEventListener('pointermove', notePen, true);
+document.addEventListener('pointerup', (e) => { if (e.pointerType === 'pen') { penDown = false; notePen(e); } }, true);
+document.addEventListener('pointercancel', (e) => { if (e.pointerType === 'pen') { penDown = false; notePen(e); } }, true);
+document.addEventListener('click', (e) => { if (e.pointerType === 'touch' && (penDown || performance.now() - penSeen < PALM_WINDOW)) { e.stopPropagation(); e.preventDefault(); } }, true);
 cv.addEventListener('pointerdown', (e) => {
-  cv.setPointerCapture(e.pointerId);
-  pts.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
+  if (e.pointerType === 'pen') for (const id of [...pts.keys()]) if (pts.get(id).touch) { pts.delete(id); pinch = null; }    // the palm got there first
+  try { cv.setPointerCapture(e.pointerId); } catch (err) { /* a pointer the browser no longer tracks */ }
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, touch: e.pointerType === 'touch' });
   if (pts.size === 1) {
     moved = false; press = setTimeout(() => { if (!moved && pts.size === 1) { const q = pts.values().next().value; press = null; moved = true; onLongPress(q.x, q.y); } }, 450);
   } else if (pts.size === 2) {
@@ -1118,7 +1143,7 @@ function openPlaces() {
         if (g.level.kind !== 'overworld') { toast('Go outside first'); return; }
         const path = player_path(g.level, [p.x, p.y], [q.x, q.y], () => true);
         closeSheet();
-        if (!path || !path.length) toast('No route'); else if (g.visible_hostiles().length) toast('Enemies nearby'); else startTravel(path);
+        if (!path || !path.length) toast('No route'); else startTravel(path);
       });
       body.append(row);
     }
@@ -1164,7 +1189,7 @@ function openLog(all = false) {
 function openHelp() {
   openSheet('How to play', (body) => {
     const li = (t, d) => body.append(el('div', 'row', el('div', 'main', [el('div', 'name', t), el('div', 'sub', d)])));
-    li('Move', 'Hold the pad, or tap a tile to walk there. Walking stops when an enemy appears. Tap an adjacent enemy to hit it.');
+    li('Move', 'Hold the pad, or tap a tile to walk there (with or without enemies around; it stops if you are hurt or tap again). Tap an enemy to hit it, shoot it, or walk up to it if it is out of reach.');
     li('ACT button', 'It changes with what is next to you: pick up, search a crate, talk, sleep, unlock, rest. Tap yourself for the same.');
     li('Fire', 'With a ranged weapon equipped: one target fires at once; with several, tap the one you want.');
     li('Push', 'Shove the dead (or a raider) next to you: it staggers back a tile (two if you are level 4+) and loses a turn or two. Make room, break off, or steer it onto a trap or a fire. Brutes resist, the big one does not budge, a wall behind it hurts it. Costs stamina; keyboard V.');

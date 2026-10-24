@@ -54,12 +54,13 @@ city when they load. Tests: `test/tide.test.js`, `test/saga.test.js`.
 ## Touch controls
 
 * **Pad** (bottom left): hold to keep moving. The centre dot waits; hold it to rest.
-* **Tap a tile** to walk there; you stop when an enemy appears. Tap an adjacent enemy to hit it, a far enemy to
+* **Tap a tile** to walk there, enemies in view or not; you stop when you arrive, when you are hurt, or when you tap again. Something in the way gets walked around. Tap an enemy out of reach to walk up to it. Tap an adjacent enemy to hit it, a far enemy to
   shoot it (ranged weapon equipped). Long-press a tile to see what it is. Pinch to zoom.
 * **ACT** changes with context: pick up, search, talk, sleep, unlock, rest.
 * **FIRE**, **BAG**, **MENU**. The menu holds craft, documents, skills, places, throw, sneak, run, light, settings.
 * A red **CUT IT OFF** button appears when an arm or leg bite can still be amputated.
 * Settings: left-handed layout, zoom, tap-to-travel, vibration.
+* **Apple Pencil**: once the pen has touched the screen, a palm resting on it is ignored (no stray taps, presses or pinch zoom) while the pen is down and for a moment after.
 
 The run autosaves to the browser's local storage (every 100 turns, when the page is hidden, and from the
 menu). If the browser blocks storage the game tells you and plays without saving.
