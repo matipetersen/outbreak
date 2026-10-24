@@ -41,7 +41,7 @@ function player_died(game, kind, cause) {
   const label = label_of(game, game.generation, game.current_origin);
   const record = { label, level: p.level, day: game_day(game), kills: p.kills, cause: cause || (kind === 'turned' ? 'turned' : 'died'), kind };
   game.fallen.push(record);
-  const gear = [p.weapon, p.armor, p.light].concat(p.inventory).filter((i) => i);
+  const gear = [p.weapon, p.armor, p.light, p.shield].concat(p.inventory).filter((i) => i);
   for (const item of gear) lv.drop([p.x, p.y], item);
   if (lv.occ.get(lv.idx(p.x, p.y)) === p) lv.occ.delete(lv.idx(p.x, p.y));
   lv.corpses[lv.idx(p.x, p.y)] = [game.clock.turn, 2];

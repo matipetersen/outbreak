@@ -32,11 +32,11 @@ function trial(seed, mode, side, state, zspecial = 'walker', facing = [1, 0]) {
 
 const rate = (mode, side, facing) => {
   let n = 0, noticed = 0, killed = 0;
-  for (let seed = 1; seed <= 30; seed++) { const r = trial(seed, mode, side, 'idle', 'walker', facing); if (!r) continue; n++; if (r.noticed) noticed++; if (r.killed) killed++; }
+  for (let seed = 1; seed <= 60; seed++) { const r = trial(seed, mode, side, 'idle', 'walker', facing); if (!r) continue; n++; if (r.noticed) noticed++; if (r.killed) killed++; }
   return { n, noticed: noticed / n, killed: killed / n };
 };
 const R = { wb: rate('walk', 'behind', [1, 0]), sb: rate('sneak', 'behind', [1, 0]), ss: rate('sneak', 'behind', [0, 1]), sf: rate('sneak', 'front', [1, 0]), wf: rate('walk', 'front', [1, 0]) };
-assert(R.wb.n >= 25);
+assert(R.wb.n >= 50);
 assert(R.wb.noticed >= 0.8 && R.wf.noticed >= 0.8, 'walking up to a zombie must get you noticed');
 assert(R.sb.noticed <= 0.25 && R.sb.killed >= 0.2, `sneaking up behind should work: ${JSON.stringify(R.sb)}`);
 assert(R.ss.noticed <= 0.4 && R.ss.killed >= 0.1, `sneaking up at its side should often work: ${JSON.stringify(R.ss)}`);

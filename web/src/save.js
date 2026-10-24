@@ -92,6 +92,8 @@ function deserialize_game(json) {
   g.know = new Knowledge(era_vocabulary(g.era), g.era.glyphs);
   g.know.known = new Set(d.know.known); g.know.exposure = d.know.exposure;
   g.player = Object.assign(Object.create(Player.prototype), d.player);
+  if (g.player.shield === undefined) g.player.shield = null;
+  for (const r of CONTENT.recipes) if (r.starter && !g.player.recipes.includes(r.id)) g.player.recipes.push(r.id);     // recipes everyone knows now
   g.pois = d.pois;
   g.levels = {};
   for (const [id, ld] of Object.entries(d.levels)) g.levels[id] = _deserialize_level(ld);

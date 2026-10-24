@@ -841,6 +841,7 @@ function itemStats(it) {
   if (d.kind === 'weapon') bits.push(`${d.style} ${d.dmg[0]}-${d.dmg[1]}` + (d.reach > 1 ? `, reach ${d.reach}` : '') + (d.ammo ? `, uses ${game.item_def(d.ammo).name.toLowerCase()}` : '') + `, noise ${d.noise}`);
   else if (d.kind === 'armor') bits.push(`defence ${d.defense}, bite guard ${Math.round(d.bite_guard * 100)}%` + (d.stealth ? `, noisy +${d.stealth}` : ''));
   else if (d.kind === 'light') bits.push(`light radius ${d.light}`);
+  else if (d.kind === 'shield') bits.push(`blocks ${Math.round(d.block * 100)}% of blows that land; not with a bow, polearm or long gun` + (two_handed(game) ? ' (your weapon needs both hands)' : ''));
   else bits.push(d.desc);
   if (d.durability && it.dur !== null) bits.push(`${d.kind === 'light' ? 'fuel' : 'condition'} ${it.dur}/${d.durability}`);
   return bits.filter(Boolean).join(' · ');
@@ -850,7 +851,7 @@ function openInventory(sel = -1) {
   openSheet(`Pack ${game.player.slots_used()}/${INVENTORY_SLOTS}`, (body) => {
     const p = game.player;
     body.append(el('h3', 'sec', 'Carried now'));
-    for (const [slot, label] of [['weapon', 'Hand'], ['armor', 'Body'], ['light', 'Light']]) {
+    for (const [slot, label] of [['weapon', 'Hand'], ['shield', 'Off hand'], ['armor', 'Body'], ['light', 'Light']]) {
       const it = p[slot];
       const row = el('div', 'row');
       row.append(el('div', 'badge', label[0]), el('div', 'main', [el('div', 'name', it ? itemName(it) : (slot === 'weapon' ? 'Bare fists' : 'Nothing')), el('div', 'sub', it ? itemStats(it) : label)]));
@@ -870,7 +871,7 @@ function openInventory(sel = -1) {
       body.append(row);
       if (i === sel) {
         const acts = el('div', 'actionrow');
-        const use = { weapon: 'Equip', armor: 'Equip', light: 'Equip', food: 'Eat', med: 'Use', tool: 'Use', throw: 'Throw' }[d.kind] || (d.effect.refuel ? 'Refuel light' : null);
+        const use = { weapon: 'Equip', armor: 'Equip', light: 'Equip', shield: 'Equip', food: 'Eat', med: 'Use', tool: 'Use', throw: 'Throw' }[d.kind] || (d.effect.refuel ? 'Refuel light' : null);
         if (use) acts.append(btn('btn main', use, () => {
           if (d.kind === 'throw') { closeSheet(); startAim('throw', d.id); return; }
           sheetAct(() => game.use(i)); openInventory(Math.min(sel, game.player.inventory.length - 1));
@@ -884,7 +885,7 @@ function openInventory(sel = -1) {
 
 function openCraft() {
   openSheet(`Craft · fluency ${Math.floor(game.know.fluency * 100)}%`, (body) => {
-    body.append(el('p', 'note', `Better recipes need more of the ${game.era.cipher_name.toLowerCase()}. Crafting takes a few turns.`));
+    body.append(el('p', 'note', `Weapons, arrows and shields can be made anywhere; beside a workshop it is faster and the work is sturdier${at_workshop(game) ? ' (you are at one)' : ''}. Better recipes need more of the ${game.era.cipher_name.toLowerCase()}.`));
     let hidden = 0;
     for (const r of CONTENT.recipes) {
       const out = recipe_output(game, r);
@@ -894,7 +895,7 @@ function openCraft() {
       const need = r.inputs.map(([i, q]) => `${q}x ${game.item_def(i).name.toLowerCase()}`).join(', ');
       const row = el('div', 'row tap' + (ok ? '' : ' off'));
       row.append(el('div', 'main', [el('div', 'name', `${game.item_def(out).name}${r.qty > 1 ? ' x' + r.qty : ''}`), el('div', 'sub', need + (ok ? '' : ' · ' + why))]));
-      if (ok) row.append(el('div', 'tag', `${r.turns} turns`));
+      if (ok) row.append(el('div', 'tag', `${recipe_turns(game, r)} turns`));
       row.addEventListener('click', () => { if (ok) { const top = $('#sheet-body').scrollTop; sheetAct(() => game.craft(r.id)); if (!game.over) openSheetKeep(openCraft, top); } else toast(why); });
       body.append(row);
     }
@@ -1205,6 +1206,8 @@ function openHelp() {
     li('Vaults', 'Components lie in locked vaults on the lowest floor. Use the code, or force the door (loud).');
     li('Long press', 'Hold on a tile to see what it is. Pinch to zoom.');
     li('Humanity', 'Your choices on the road decide who trades with you and who you face at the end.');
+    li('Crafting weapons', 'Menu > Craft. Weapons (nail club, blade, spear, pike, bows), arrows and shields are known from the start and can be made anywhere from wood, scrap and cloth. Beside a workshop (build one in your base) it is faster and sturdier: away from one a weapon or shield comes out at 60% condition and you get one arrow fewer.');
+    li('Shields', 'Equip one from the pack: it goes in your off hand and blocks about a fifth (plank) or a third (reinforced) of the blows that land, losing condition each time. It does nothing while you hold a bow, a polearm or a long gun.');
     li('Dash: the tide', 'No calendar: a tide of the dead rolls up the road behind you, a little slower than a walk. Searching buildings, sleeping and detours all cost ground. The chip shows how far behind it is; if it reaches you the dead come from everywhere, and if it gets far past you it is over. Near the way out the transport starts loading: reach its doors in time.');
     li('Endless: the world', 'The city goes through phases (the Collapse, the Scramble, the Holdouts, the Long Winter, the End of Days) that change loot, food, prices and what the factions do. World events are announced first: supply drops, migrations, firebreaks, a blood moon, fevers, wars, a warlord. The chip and Menu > The world show it all.');
     li('Endless: outposts', 'Some buildings are held by a faction: a voice behind a barricade stops you at the door. Talk, pay, bring food, or fight your way in. Inside, the one in charge trades, takes requests, lets you sleep, and may send someone with you. Answer their calls for help (a siege, a fever) and they become allies.');

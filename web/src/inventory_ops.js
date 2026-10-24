@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------- item handling (each returns the turns it cost)
-const SLOT_OF_KIND = { weapon: 'weapon', armor: 'armor', light: 'light' };
+const SLOT_OF_KIND = { weapon: 'weapon', armor: 'armor', light: 'light', shield: 'shield' };
 
 function equip(game, index) {
   const p = game.player;
@@ -173,11 +173,11 @@ function craft_item(game, recipe_id) {
   if (!ok) { game.msg(`You cannot craft that: ${reason}.`, 'warn'); return 0; }
   const p = game.player;
   for (const [item_id, qty] of r.inputs) for (let i = 0; i < qty; i++) if (game.rng.random() >= p.mod('craft_save')) p.take(item_id, 1);
-  const out = recipe_output(game, r);
-  game.give_item(make_item(out, r.qty));
+  const out = recipe_output(game, r), item = crafted_item(game, r, out), rough = r.workshop && !at_workshop(game);
+  game.give_item(item);
   p.gain_xp(2);
-  game.msg(`You craft ${r.qty}x ${game.item_def(out).name.toLowerCase()}.`, 'good');
-  return r.turns;
+  game.msg(`You craft ${item.qty}x ${game.item_def(out).name.toLowerCase()}` + (rough ? ' (rough work, away from a workshop).' : '.'), 'good');
+  return recipe_turns(game, r);
 }
 
 function pickup_here(game) {

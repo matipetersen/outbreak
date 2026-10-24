@@ -61,6 +61,15 @@ is created and fires once when you get close. Choices cost items, health, humani
 All three end with a hold-out finale. Who shows up depends on your **humanity**: the Alpha if you stayed human,
 armed people who have heard about you if you did not.
 
+**Crafting weapons, arrows and shields (web only).** Every weapon recipe (nail club, ground blade, reinforced spear, scrap
+bow, the era's own bow and spear where it has them), arrows (the era's arrows or darts, and improvised shafts) and two
+shields are known from the start and can be made anywhere. A workshop no longer gates them: beside one the work takes the
+listed time and comes out in full condition; away from one it takes half as long again, weapons and shields come out at 60%
+condition, and arrows one fewer. Shields are a new item worn in the off hand (Pack > Off hand): a plank shield blocks 22% of
+the blows that land (zombies and people alike), a reinforced one 34%; each block costs it condition (two against heavy hitters)
+until it splits. They need the other hand free, so they do nothing with a bow, a polearm or a long gun (a pistol is fine).
+(`web/src/crafting.js`)
+
 **Dash: the tide (web only).** Dash and Extraction used to be the same run with one phase removed. In the web game Dash is
 a pursuit: a front of the dead rolls up the road from where you started towards the way out at about 0.42 tiles a turn
 (x0.85 easy, x1.15 hard, faster at night), after a short grace. It is a line, not a crowd: what matters is how far along the
