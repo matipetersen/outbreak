@@ -2,7 +2,7 @@ const assert = require('assert');
 const { OB, make, empty_level, teleport } = require('./helpers');
 
 function at_pad(seed = 3) {
-  const g = make({ scenario: 'dash', seed }); teleport(g, g.final_site_id + ':0'); empty_level(g.world.level);
+  const g = make({ scenario: 'extraction', seed }); g.requirements = () => []; teleport(g, g.final_site_id + ':0'); empty_level(g.world.level);
   g.player.hp = g.player.max_hp = 1e6; return [g, g.level];
 }
 const zombies = (lv) => lv.actors.filter((a) => a.kind === 'zombie');

@@ -388,22 +388,26 @@ function drawMarkers(fr) {
   drawThreats(fr);
   if (game.level.kind !== 'overworld') return;
   const { ox, oy, ts } = view, m = 22;
-  for (const poi of Object.values(game.pois)) {
-    if (!poi.revealed || poi.kind === 'breach') continue;
-    let col = null;
-    if (poi.lead && poi.component && game.player.count(poi.component) === 0) col = '#55b3c4';
-    else if (poi.id === game.final_site_id) col = '#b87ad0';
-    if (!col) continue;
-    const px = ox + (poi.x + .5) * ts, py = oy + (poi.y + .5) * ts;
-    if (px > m && px < W - m && py > fr.top + m && py < fr.bottom - m) continue;
+  const arrow = (x, y, col, letter) => {
+    const px = ox + (x + .5) * ts, py = oy + (y + .5) * ts;
+    if (px > m && px < W - m && py > fr.top + m && py < fr.bottom - m) return;
     const cx = Math.min(W - m, Math.max(m, px)), cy = Math.min(fr.bottom - m, Math.max(fr.top + m, py));
     const ang = Math.atan2(py - cy, px - cx);
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
     ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -9); ctx.lineTo(-8, 9); ctx.closePath(); ctx.fill();
     ctx.restore();
     ctx.fillStyle = col; ctx.font = `bold 11px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(POI_LETTER[poi.kind] || 'H', cx - Math.cos(ang) * 20, cy - Math.sin(ang) * 20);
+    ctx.fillText(letter, cx - Math.cos(ang) * 20, cy - Math.sin(ang) * 20);
+  };
+  for (const poi of Object.values(game.pois)) {
+    if (!poi.revealed || poi.kind === 'breach') continue;
+    let col = null;
+    if (poi.lead && poi.component && game.player.count(poi.component) === 0) col = '#55b3c4';
+    else if (poi.id === game.final_site_id && !game.saga) col = '#b87ad0';
+    if (col) arrow(poi.x, poi.y, col, POI_LETTER[poi.kind] || 'H');
   }
+  for (const [x, y, col, letter] of saga_markers(game)) arrow(x, y, col, letter);
+  if (game.base_id && game.saga) { const b = saga_base_poi(game); if (b) arrow(b.x, b.y, '#58b878', 'B'); }
 }
 
 function frame() {
@@ -476,7 +480,9 @@ function updateHud() {
   if (g.live && g.sleep_left > 0) add('Asleep', 'info');
   if (g.cfg.needs && p.hunger > 50) add('Hungry', p.hunger > 80 ? 'danger' : 'warn');
   if (g.final) add(g.final.exit ? `GET OUT: ${g.final.exit_name}` : `HOLD OUT ${g.final.turns_left}`, 'danger');
-  if (g.ring && g.ring.active) add('Tide closing', 'warn');
+  if (g.ring && g.ring.active && !g.front) add('Tide closing', 'warn');
+  if (g.front) { const gap = front_gap(g); add(front_status(g), g.front.depart || gap < 6 ? 'danger' : gap < 20 ? 'warn' : 'info'); }
+  if (g.saga) { const e = g.saga.events.find((x) => x.started), ch = el('button', 'chip ' + (e ? 'warn' : 'info'), e ? SAGA_EVENTS[e.id].name : saga_phase(g).name); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openSaga(); }); chips.append(ch); }
   const objs = g.objectives(), next = objs.find((o) => !o[1]) || objs[objs.length - 1];
   $('#goal').innerHTML = ''; $('#goal').append(el('b', null, 'Goal '), next ? next[0] : '', '');
   layoutOverlays();
@@ -881,7 +887,7 @@ function openBase() {
   openSheet(in_base(g) ? `Your base · ${g.level.name}` : 'A base of your own', (body) => {
     if (!in_base(g)) {
       const reason = can_claim(g);
-      body.append(el('p', 'event-text', 'A base is a building you have cleared and claimed. Fit it out with a workshop, a cot, a locker and barricades; at night the dead will come for it. If you die in hardcore, the next survivor wakes here, and the locker is still full.'));
+      body.append(el('p', 'event-text', 'A base is a building you have cleared and claimed. Fit it out with a workshop, a cot, a locker and barricades (from your pack or the locker); at night the dead will come for it. If you die in hardcore, the next survivor wakes here, and the locker is still full.'));
       if (reason) body.append(el('p', 'note', reason));
       else body.append(el('div', 'actionrow', [btn('btn main', 'Claim ' + g.level.name, () => { closeSheet(); doAction(() => g.claim_base()); }), btn('btn', 'Not now', () => closeSheet())]));
       return;
@@ -894,6 +900,132 @@ function openBase() {
       row.append(el('div', 'main', [el('div', 'name', s.name), el('div', 'sub', `${need} · ${s.desc}` + (ok ? '' : ' · ' + why))]));
       row.addEventListener('click', () => { if (ok) { const top = $('#sheet-body').scrollTop; sheetAct(() => g.build_structure(s.id)); if (!g.over) openSheetKeep(openBase, top); } else toast(why); });
       body.append(row);
+    }
+    if (g.saga) baseSaga(body);
+  });
+}
+
+// Endless: the people who live here, what you are building together, and how it can end.
+function baseSaga(body) {
+  const g = game, S = g.saga, redo = () => { const top = $('#sheet-body').scrollTop; openSheetKeep(openBase, top); };
+  body.append(el('h3', 'sec', `Your people · ${S.residents.length}/${saga_capacity(g)} beds`));
+  if (!S.residents.length) body.append(el('p', 'note', 'Nobody lives here yet. Leave your companion here, bring people from outposts, or take in whoever comes to the door. Each cot you build is room for two more.'));
+  for (const r of S.residents) {
+    const row = el('div', 'row tap');
+    row.append(el('div', 'badge', r.name[0]), el('div', 'main', [el('div', 'name', `${r.name}, ${saga_label(r)}`), el('div', 'sub', `${SAGA_JOBS[r.job][0]} · morale ${r.morale}` + (r.hurt ? ' · hurt' : '') + (r.faction !== 'enclave' ? ` · from ${faction_name(g, r.faction)}` : ''))]));
+    row.addEventListener('click', () => openResident(r));
+    body.append(row);
+  }
+  const food = S.residents.length ? lockerFood(g) : 0;
+  if (S.residents.length) body.append(el('p', 'note', `Food in the locker: ${food} portion${food === 1 ? '' : 's'}. They eat ${Math.ceil(S.residents.length * saga_mod(g, 'food_need'))} a day, every morning.`));
+  body.append(el('h3', 'sec', 'Projects'));
+  if (S.building) {
+    const q = SAGA_PROJECT_BY_ID[S.building];
+    body.append(el('p', 'event-text', `Building the ${saga_project_name(g, q.id).toLowerCase()}: ${S.progress[q.id] || 0}/${q.work} days of work. People on Build add one a day (a tinker two).`));
+    body.append(el('div', 'actionrow', [btn('btn main', 'Work on it (4 hours)', () => { sheetAct(() => saga_work(g)); if (!g.over && !$('#overlay').hidden) redo(); })]));
+  }
+  for (const q of SAGA_PROJECTS) {
+    const [ok, why] = saga_project_status(g, q);
+    const need = q.cost.map(([i, n]) => `${n}x ${g.item_def(i).name.toLowerCase()}`).join(', ');
+    const row = el('div', 'row tap' + (ok ? '' : ' off'));
+    row.append(el('div', 'badge', S.built.includes(q.id) ? 'ok' : '·'), el('div', 'main', [el('div', 'name', saga_project_name(g, q.id)), el('div', 'sub', `${need} · ${q.work} days · ${q.desc}` + (ok ? '' : ' · ' + why))]));
+    row.addEventListener('click', () => { if (!ok) { toast(why); return; } const r = saga_start_project(g, q.id); if (r) toast(r); refresh(); redo(); });
+    body.append(row);
+  }
+  body.append(el('p', 'note', 'Materials come from your pack and the locker.'));
+  body.append(el('h3', 'sec', 'How it ends'));
+  for (const e of saga_endings(g)) {
+    const row = el('div', 'row' + (e.ready ? ' tap' : ''));
+    row.append(el('div', 'badge', e.ready ? '!' : '·'), el('div', 'main', [el('div', 'name', e.name), el('div', 'sub', e.text + (e.ready ? ` · ready: a final stand of ${e.turns} turns, here` : ''))]));
+    if (e.ready) row.addEventListener('click', () => confirmEnding(e));
+    body.append(row);
+  }
+}
+function lockerFood(g) { const lv = saga_base_level(g); return lv ? lv.stash.filter((i) => g.item_def(i.id).kind === 'food').reduce((s, i) => s + i.qty, 0) : 0; }
+
+function openResident(r, line = '') {
+  const g = game;
+  openSheet(r.name, (b) => {
+    const a = COMP_BY_ID[r.arch];
+    b.append(el('p', 'event-text', `${r.name}, ${saga_label(r)}. Morale ${r.morale}/100${r.hurt ? ', hurt' : ''}. With you since day ${r.joined}.` + (a ? ` Good at it: ${COMP.strengths[a.strength]}.` : '')));
+    if (line) b.append(el('p', 'note say t-ally', line));
+    b.append(el('h3', 'sec', 'Their work'));
+    for (const [id, [name, desc]] of Object.entries(SAGA_JOBS)) {
+      const need = SAGA_JOB_NEEDS[id], off = need && !saga_built(g, need);
+      const row = el('div', 'row tap' + (off ? ' off' : '') + (r.job === id ? ' on' : ''));
+      row.append(el('div', 'badge', r.job === id ? 'ok' : '·'), el('div', 'main', [el('div', 'name', name), el('div', 'sub', desc)]));
+      row.addEventListener('click', () => { const l = saga_set_job(g, r, id); openResident(r, l); });
+      b.append(row);
+    }
+    const acts = el('div', 'actionrow');
+    acts.append(btn('btn', 'Come with me', () => { const l = saga_take_along(g, r); refresh(); closeSheet(); toast(l); }));
+    acts.append(btn('btn', 'Back to the base', () => openBase()));
+    b.append(acts);
+  });
+}
+
+function confirmEnding(e) {
+  openSheet(e.name, (b) => {
+    b.append(el('p', 'event-text', `${e.text}.`));
+    b.append(el('p', 'event-text t-warn', `Once it starts you have to hold this place for ${e.turns} turns, and everything in the city will come. Barricade the doors, set traps, put people on guard. If you hold, it is over.`));
+    b.append(el('div', 'actionrow', [btn('btn danger', 'Begin', () => { const r = saga_begin_ending(game, e.id); closeSheet(); if (r) toast(r); else afterAction(); }), btn('btn', 'Not yet', () => openBase())]));
+  });
+}
+
+// An outpost: the one in charge, or one of the guards.
+function openOutpost(npc, line) {
+  const g = game, o = g.saga.outposts[npc.outpost];
+  if (!o || !o.owner) return;
+  const f = o.owner, poi = g.pois[o.id], name = faction_name(g, f), warden = npc.role === 'warden';
+  if (line === undefined) line = warden ? dlg_era(g, `"${({ ally: 'You are always welcome here.', friendly: 'Good to see you. What do you need?', wary: 'You got in. Now what do you want?' })[faction_attitude(g, f)] || 'Make it quick.'}"`) : dlg_greeting(g, npc);
+  openSheet(`${poi.name} · ${name}`, (b) => {
+    if (line) for (const para of line.split('\n\n')) b.append(el('p', 'event-text story', para));
+    b.append(el('p', 'note', `${g.era.factions[f][1]} ${o.garrison} of them hold the ground floor. They think you are ${faction_attitude(g, f)}.` + (o.sick_until > g.clock.turn ? ' There is fever here.' : '')));
+    const say = (msg) => { refresh(); openOutpost(npc, msg); };
+    const acts = el('div', 'actionrow');
+    if (warden) {
+      acts.append(btn('btn main', 'Trade', () => { closeSheet(); openTrade('', f); }));
+      acts.append(btn('btn', o.sick_until > g.clock.turn ? 'Bring medicine (2)' : 'What do you need?', () => say(outpost_help(g, npc))));
+      acts.append(btn('btn', 'Can anyone come with me?', () => say(outpost_recruit(g, npc))));
+      if (g.level.safe) acts.append(btn('btn', 'Sleep here tonight', () => { closeSheet(); doAction(() => g.sleep()); }));
+    } else acts.append(btn('btn main', 'Talk', () => say(dlg_greeting(g, npc))));
+    acts.append(btn('btn', 'The news?', () => say(dlg_news(g, npc))));
+    b.append(acts);
+    b.append(el('p', 'note', `You have ${g.player.coins} ${g.era.coin}.`));
+  }, { cls: 'brief' });
+}
+
+// Endless: the city as a whole, what phase it is in, who holds what, and what is happening.
+function openSaga() {
+  const g = game, S = g.saga, P = saga_phase(g), p = g.player;
+  openSheet(`The world · day ${game_day(g)}`, (b) => {
+    b.append(el('h3', 'sec', P.name), el('p', 'event-text', P.blurb));
+    const next = SAGA_PHASES[saga_phase_index(g) + 1];
+    if (next) b.append(el('p', 'note', `${next.name} from day ${next.from}.`));
+    const live = S.events.filter((e) => e.started), coming = S.events.filter((e) => !e.started);
+    if (live.length || coming.length) {
+      b.append(el('h3', 'sec', 'Happening'));
+      for (const e of live) b.append(el('div', 'row', [el('div', 'badge', '!'), el('div', 'main', el('div', 'name', SAGA_EVENTS[e.id].name))]));
+      for (const e of coming) b.append(el('div', 'row', [el('div', 'badge', '·'), el('div', 'main', [el('div', 'name', SAGA_EVENTS[e.id].name), el('div', 'sub', `in about ${Math.max(1, Math.round((e.at - g.clock.turn) / 10))} hours`)])]));
+    }
+    b.append(el('h3', 'sec', 'The factions'));
+    for (const f of SAGA_FACTIONS) {
+      const fs = S.factions[f], n = outposts_of(g, f).length;
+      const row = el('div', 'row');
+      row.append(el('div', 'main', [el('div', 'name', faction_name(g, f)), el('div', 'sub', fs.str <= 0 ? 'gone' : `${n} outpost${n === 1 ? '' : 's'} · strength ${fs.str} · they think you are ${faction_attitude(g, f)} (${g.rep[f] || 0})`)]));
+      b.append(row);
+    }
+    if (S.warlord && !S.warlord.dead) b.append(el('p', 'note t-bad', `${S.warlord.name} rules the raiders from ${g.pois[S.warlord.seat].name}.`));
+    b.append(el('h3', 'sec', 'Outposts you know'));
+    const here = world_pos(g), known = Object.values(S.outposts).filter((o) => g.pois[o.id].revealed || g.pois[o.id].visited).sort((a, c) => cheb(poi_pos(g.pois[a.id]), here) - cheb(poi_pos(g.pois[c.id]), here));
+    if (!known.length) b.append(el('p', 'note', 'None yet. Buildings with people in them show up as you find them, or on the radio once you have one.'));
+    for (const o of known) {
+      const q = g.pois[o.id];
+      b.append(el('div', 'row', [el('div', 'badge', POI_LETTER[q.kind] || 'H'), el('div', 'main', [el('div', 'name', outpost_lines(g, o)), el('div', 'sub', `${compass(q.x - here[0], q.y - here[1])} · ${dist_words(g.era.id, cheb(poi_pos(q), here))}`)])]));
+    }
+    if (S.log.length) {
+      b.append(el('h3', 'sec', 'What you have heard'));
+      for (const [day, text] of S.log.slice(-15).reverse()) b.append(el('div', 'row', [el('div', 'main', el('div', null, text)), el('div', 'tag', 'D' + day)]));
     }
   });
 }
@@ -987,7 +1119,7 @@ function openPlaces() {
       const row = el('div', 'row tap');
       const goal = q.id === g.final_site_id;
       row.append(el('div', 'badge', POI_LETTER[q.kind] || 'H'), el('div', 'main', [el('div', 'name', q.name + (goal ? ' (goal)' : '')),
-        el('div', 'sub', `${compass(q.x - p.x, q.y - p.y)} · ${dist_words(game.era.id, cheb(poi_pos(q), [p.x, p.y]))} · ${q.visited ? 'visited' : 'unvisited'}${q.papers && !q.visited ? ' · papers rumoured' : ''}${q.lead && q.component && p.count(q.component) === 0 ? ' · holds a component' : ''}`)]));
+        el('div', 'sub', `${compass(q.x - p.x, q.y - p.y)} · ${dist_words(game.era.id, cheb(poi_pos(q), [p.x, p.y]))} · ${q.visited ? 'visited' : 'unvisited'}${q.papers && !q.visited ? ' · papers rumoured' : ''}${q.lead && q.component && p.count(q.component) === 0 ? ' · holds a component' : ''}${g.saga && outpost_of(g, q.id) && (outpost_of(g, q.id).owner || outpost_of(g, q.id).overrun) ? ' · ' + outpost_lines(g, outpost_of(g, q.id)).split(': ').slice(1).join(': ') : ''}`)]));
       row.addEventListener('click', () => {
         if (g.level.kind !== 'overworld') { toast('Go outside first'); return; }
         const path = player_path(g.level, [p.x, p.y], [q.x, q.y], () => true);
@@ -1015,6 +1147,8 @@ function openStatus() {
     add('Kills', `${p.stats.zombies || 0} dead, ${p.stats.humans || 0} people`);
     add('Time', `${stampOf(g)} (${g.clock.phase})`);
     if (p.infected) add('Infection', `${p.infection_timer} turns left (about ${Math.round(p.infection_timer / 10)} hours)`);
+    if (g.front) add('The tide', front_status(g));
+    if (g.saga) { add('The world', `${saga_phase(g).name} (day ${game_day(g)})`); if (g.base_id) add('Your people', `${g.saga.residents.length} at the base`); }
     if (g.deadline_days) add('Deadline', `the way out closes after day ${g.deadline_days}` + (g.lost_turns ? ` (the road has cost ${Math.round(g.lost_turns / 10)} hours)` : ''));
     add('The dead', `${g.profile.name}. ${profile_phase(g.profile, game_day(g)).name}.`);
     { const r = mutation_here(g); add('This district', `${r.name}: ${mutation_traits_text(r)}`); }
@@ -1052,6 +1186,11 @@ function openHelp() {
     li('Vaults', 'Components lie in locked vaults on the lowest floor. Use the code, or force the door (loud).');
     li('Long press', 'Hold on a tile to see what it is. Pinch to zoom.');
     li('Humanity', 'Your choices on the road decide who trades with you and who you face at the end.');
+    li('Dash: the tide', 'No calendar: a tide of the dead rolls up the road behind you, a little slower than a walk. Searching buildings, sleeping and detours all cost ground. The chip shows how far behind it is; if it reaches you the dead come from everywhere, and if it gets far past you it is over. Near the way out the transport starts loading: reach its doors in time.');
+    li('Endless: the world', 'The city goes through phases (the Collapse, the Scramble, the Holdouts, the Long Winter, the End of Days) that change loot, food, prices and what the factions do. World events are announced first: supply drops, migrations, firebreaks, a blood moon, fevers, wars, a warlord. The chip and Menu > The world show it all.');
+    li('Endless: outposts', 'Some buildings are held by a faction: a voice behind a barricade stops you at the door. Talk, pay, bring food, or fight your way in. Inside, the one in charge trades, takes requests, lets you sleep, and may send someone with you. Answer their calls for help (a siege, a fever) and they become allies.');
+    li('Endless: your base', 'Claim a building, build cots, and people can live there: your companion, people from outposts, refugees at the door. Give them work (guard, scavenge, medic, build, grow food, research); they eat from the locker each morning and hold the walls when you are away. Build projects together: a radio, a lookout, a greenhouse, an infirmary, a wall, a generator, a laboratory, a vehicle.');
+    li('Endless: endings', 'Besides surviving: the cure (laboratory, research, the three components and the formula), the exodus (finish the vehicle), or the sanctuary (a radio, three allied outposts, day 20). Each starts a final stand at your base; hold until it is over.');
   });
 }
 
@@ -1075,6 +1214,7 @@ function openMenu() {
     tile('Gore disguise', 'smear with a corpse', () => { closeSheet(); doAction(() => g.smear()); });
     tile('Field report', 'goals and stats', () => openStatus());
     if (g.shared) tile('World', 'the shared season', () => openWorld());
+    if (g.saga) tile('The world', `${saga_phase(g).name}`, () => openSaga());
     tile('Briefing', 'the story so far', () => showBriefing(0));
     tile('Journal', 'message history', () => openLog());
     tile('Settings', 'zoom, layout, save', () => openSettings());
@@ -1208,12 +1348,14 @@ function openCompanion(c, line = '') {
       for (const [it, i] of gifts) row.append(btn('btn', `${g.item_def(it.id).name} x${it.qty}`, () => { const l = comp_give(g, c, i); refresh(); openCompanion(c, l); }));
       b.append(row);
     }
+    if (g.saga && in_base(g)) b.append(btn('btn', 'Stay here at the base', () => { const l = saga_station(g, c); refresh(); closeSheet(); toast(l); }));
     b.append(btn('btn danger', 'Go your own way', () => { const l = comp_dismiss(g, c); refresh(); closeSheet(); toast(l); }));
   });
 }
 
 function openNpc(npc, line) {
   const g = game;
+  if (npc.outpost && g.saga) { openOutpost(npc, line); return; }
   if (npc.trait && npc.uid === g.companion_uid) { openCompanion(npc); return; }
   const personal = ['trader', 'healer', 'scholar', 'scout', 'soldier'].includes(npc.role);
   if (!['scout', 'soldier'].includes(npc.role)) {
@@ -1245,15 +1387,15 @@ function openNpc(npc, line) {
   }, { cls: 'brief' });
 }
 
-function openTrade(msg) {
+function openTrade(msg, faction = 'enclave') {
   const g = game, p = g.player;
-  openSheet(`Trader · ${p.coins} ${g.era.coin}`, (body) => {
+  openSheet(`${faction === 'enclave' ? 'Trader' : cap(WARDEN_WORD[faction] || 'trader')} · ${p.coins} ${g.era.coin}`, (body) => {
     if (msg) body.append(el('p', 'note t-good', msg));
     body.append(el('h3', 'sec', 'Buy'));
-    for (const [id, price] of stock(g)) {
+    for (const [id, price] of stock(g, faction)) {
       const row = el('div', 'row tap');
       row.append(el('div', 'main', [el('div', 'name', g.item_def(id).name), el('div', 'sub', g.item_def(id).desc)]), el('div', 'tag', `${price} ${g.era.coin}`));
-      row.addEventListener('click', () => { const t = $('#sheet-body').scrollTop; const r = buy(g, id); refresh(); openTrade(r); $('#sheet-body').scrollTop = t; });
+      row.addEventListener('click', () => { const t = $('#sheet-body').scrollTop; const r = buy(g, id, faction); refresh(); openTrade(r, faction); $('#sheet-body').scrollTop = t; });
       body.append(row);
     }
     body.append(el('h3', 'sec', 'Sell'));
@@ -1262,7 +1404,7 @@ function openTrade(msg) {
       if (g.item_def(it.id).kind === 'component' || price <= 0) return;
       const row = el('div', 'row tap');
       row.append(el('div', 'main', el('div', 'name', itemName(it) + (it.qty > 1 ? ` x${it.qty}` : ''))), el('div', 'tag', `${price} ${g.era.coin}`));
-      row.addEventListener('click', () => { const t = $('#sheet-body').scrollTop; const r = sell(g, i); refresh(); openTrade(r); $('#sheet-body').scrollTop = t; });
+      row.addEventListener('click', () => { const t = $('#sheet-body').scrollTop; const r = sell(g, i); refresh(); openTrade(r, faction); $('#sheet-body').scrollTop = t; });
       body.append(row);
     });
   });
@@ -1289,9 +1431,10 @@ function confirmSleep() {
 
 function showEvent() {
   const g = game, ev = g.pending_event, def = EVENT_BY_ID[ev.event_id];
-  openSheet(def.title, (body) => {
+  const title = (ev.data && ev.data.title) || def.title, choices = (ev.data && ev.data.choices) || def.choices;
+  openSheet(title, (body) => {
     body.append(el('p', 'event-text', ev.text));
-    def.choices.forEach((c, i) => {
+    choices.forEach((c, i) => {
       const ok = can_afford(g, c);
       const b = el('button', 'choice', fmt(c.label, event_context(g))); b.type = 'button'; b.disabled = !ok;
       if (!ok) b.append(el('small', null, 'You cannot afford that'));
@@ -1299,7 +1442,8 @@ function showEvent() {
         const text = g.resolve_event(i);
         if (text === 'You cannot afford that.') { toast(text); return; }
         refresh();
-        openSheet(def.title, (bd) => { bd.append(el('p', 'event-text', text), btn('btn main', 'Continue', () => closeSheet())); }, { locked: true });
+        if (g.over) { closeSheet(); return; }
+        openSheet(title, (bd) => { bd.append(el('p', 'event-text', text), btn('btn main', 'Continue', () => closeSheet())); }, { locked: true });
       });
       body.append(b);
     });

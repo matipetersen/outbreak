@@ -6,7 +6,7 @@ function build_cutscene(game, band) {
   const p = game.player, era = game.era, sc = game.scenario, st = CONTENT.story;
   const fill = (t, vars) => t.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
   const kind = sc.final_site === 'refuge' ? 'cure' : 'out';
-  const way = fill(st.WAY_OUT[`${era.id}|${kind}`], { via: game.escape_via || 'door', pad: era.pad, refuge: era.refuge });
+  const way = game.saga && game.win_kind ? saga_way_out(game, band) : fill(st.WAY_OUT[`${era.id}|${kind}`], { via: game.escape_via || 'door', pad: era.pad, refuge: era.refuge });
   const ally = comp_current(game), pet = pets_current(game), lost = game.fallen_allies || [], parts = [];
   if (ally) parts.push(fill(st.COMPANY[band], { name: ally.name, label: comp_arch(ally) ? comp_arch(ally).label : 'survivor' }));
   if (lost.length) parts.push(fill(st.COMPANY_LOST, { lost: lost[lost.length - 1][0] }));
@@ -23,7 +23,7 @@ function build_cutscene(game, band) {
 function build_ending(game, kind, cause = '') {
   const p = game.player, sc = game.scenario, days = game_day(game);
   const decoded = Object.values(game.docs).filter((d) => p.documents.includes(d.id) && is_decoded(d, game.know)).length;
-  const score = p.kills * 2 + days * (sc.escalates ? 40 : 25) + p.humanity + decoded * 8 + p.level * 12 + (kind === 'won' ? 500 : 0);
+  const score = p.kills * 2 + days * (sc.escalates ? 40 : 25) + p.humanity + decoded * 8 + p.level * 12 + (kind === 'won' ? 500 : 0) + saga_score(game);
   const summary = [
     `Survived ${days} day${days !== 1 ? 's' : ''} (${game.clock.turn} turns)`,
     `Zombies destroyed: ${p.stats.zombies || 0}   People killed: ${p.stats.humans || 0}`,
@@ -37,8 +37,9 @@ function build_ending(game, kind, cause = '') {
   for (const [name, what] of game.fallen_allies || []) summary.push(`You lost ${name} (${what})`);
   if (game.fallen.length) summary.push(`Survivors lost: ${game.fallen.length}   You were survivor #${game.generation}`);
   if (p.lost.length) summary.push('You lost your ' + p.lost.join(' and your ') + ' to survive.');
+  summary.push(...saga_summary(game));
   let title, text;
-  if (kind === 'won') [title, text] = CONTENT.win_endings[`${sc.id}|${_band(p.humanity)}`];
+  if (kind === 'won') [title, text] = CONTENT.win_endings[`${game.win_kind && game.win_kind !== 'cure' ? game.win_kind : sc.id}|${_band(p.humanity)}`];
   else if (sc.escalates && (kind === 'dead' || kind === 'turned')) {
     title = `Survived ${days} day${days !== 1 ? 's' : ''}`;
     text = kind === 'dead' ? (cause ? cap(cause) + '.' : 'You did not make it.') : 'The fever peaks and the world goes quiet. When you open your eyes again, you are hungry.';
@@ -46,6 +47,10 @@ function build_ending(game, kind, cause = '') {
   } else if (kind === 'turned') {
     title = 'You turned';
     text = 'The fever peaks and the world goes quiet. When you open your eyes again, you are hungry, and the sounds of the living are very loud.';
+  } else if (kind === 'left_behind' && game.front) {
+    title = cause === 'departed' ? 'Left on the ramp' : 'Swallowed by the tide';
+    text = cause === 'departed' ? 'You can see the ramp from where you are when it lifts. The engines drown out the sound of you shouting, and then the sound of everything behind you.'
+      : 'You stopped once too often. The tide rolled over the road behind you, then the street you were on, then you.';
   } else if (kind === 'left_behind') {
     title = 'Left behind';
     text = `Day ${game.deadline_days + 1} dawns. Somewhere far away, the last way out leaves without you. The dead are patient. You are not.`;

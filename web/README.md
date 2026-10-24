@@ -68,6 +68,15 @@ Not shared: where other players are right now, or what each browser's roaming ho
 shared ledger on top of identical seeded worlds, not a live server simulation. Tests run against an in-memory fake
 of the database (`test/fakedb.js`); the real database was only exercised by publishing the page.
 
+## Dash and Endless are different here (web only)
+
+`src/front.js` turns Dash into a pursuit: a tide of the dead rolls up the road behind you instead of a calendar, and the
+finish is boarding a transport that is already loading, not a siege. `src/factions.js` and `src/saga.js` give the endless
+world phases, factions that hold buildings as outposts, world events, people who live and work in your base, projects,
+and three endings (cure, exodus, sanctuary). Both patch the scenario text exported from Python at load time, so the
+terminal game keeps the old Dash and Endless. Everything is in the save (`front`, `saga`); older saves get a tide or a
+city when they load. Tests: `test/tide.test.js`, `test/saga.test.js`. The shared world keeps the old endless (no factions).
+
 ## Touch controls
 
 * **Pad** (bottom left): hold to keep moving. The centre dot waits; hold it to rest.

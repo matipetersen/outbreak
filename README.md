@@ -40,14 +40,18 @@ speed, senses, how the infection spreads, intelligence, decay over the days, and
   The deadline is computed from the route (the farther the parts and the extraction point are, the longer you get: about 96
   tiles of real progress a day, plus time for every vault), never less than 10 days.
 * `dash` - no parts, only the road: get to the extraction point before the way closes and hold out. A shorter, more
-  physical run, with five incidents on the way.
+  physical run, with five incidents on the way. **In the web game Dash is a different mode**: no calendar and no siege, a
+  tide of the dead rolling up the road behind you, and a transport you have to board before it leaves (see *Dash: the tide*
+  below).
 * `endless` - no exit and no clock. Live as long as you can, or gather the three components and the formula
   and make the cure at the refuge, which ends it with a win. Nobody starts bitten. Every day past the third the
   world gets worse, without limit: the dead get +6% a day of health and damage (up to x3), hordes and ambient
   spawns grow with it, and in hardcore the enemy level cap rises with the calendar (up to 40, not 15). To keep
   a long life possible, vaults and containers you emptied refill (about half of them) every 4 days. Dying
   is a survival result ("Survived 23 days") with a bigger score per day. Combined with `living` it is the eternal
-  hardcore world.
+  hardcore world. **In the web game the endless world has phases, factions with outposts, world events, people living in
+  your base and three endings of its own** (see *The endless world* below); the curve is gentler there (+3.5% a day, up to
+  x2.4) because the danger comes from what the world does, not from bigger numbers.
 
 On the road to the extraction point (`extraction` and `dash`) things happen: wrecked convoys, an abandoned checkpoint, a
 bridge that is out, a column of refugees, an ambush, the dead crossing the road. Each is placed on the route when the world
@@ -56,6 +60,55 @@ is created and fires once when you get close. Choices cost items, health, humani
 
 All three end with a hold-out finale. Who shows up depends on your **humanity**: the Alpha if you stayed human,
 armed people who have heard about you if you did not.
+
+**Dash: the tide (web only).** Dash and Extraction used to be the same run with one phase removed. In the web game Dash is
+a pursuit: a front of the dead rolls up the road from where you started towards the way out at about 0.42 tiles a turn
+(x0.85 easy, x1.15 hard, faster at night), after a short grace. It is a line, not a crowd: what matters is how far along the
+road you are (inside a building, the building's door counts). Everything you stop for costs ground: searching a building,
+a night's sleep, a road incident's lost hours (`time` in an event moves the tide on by what it would have walked). The HUD
+shows how far behind it is, with warnings at 30, 15 and 6 tiles. If it reaches you the dead come at you from every side,
+more the further it has rolled past; 30 tiles past you, it is over ("Swallowed by the tide"). Buildings it has rolled over
+fill with the dead. The way out is known from the start. Within 22 tiles of it the transport starts loading: you have 60
+turns to reach its doors, and the tide closes in behind you for the last stretch. Stepping through the doors is the win:
+no bench, no hold-out, no break-out. In hardcore the next survivor gets a race of their own. (`web/src/front.js`)
+
+**The endless world (web only).** Endless used to be one curve and the hero's journey on a loop. Now the world moves on
+by itself (`web/src/saga.js`, `web/src/factions.js`):
+* *Phases* that change the rules: the Collapse (days 1-4), the Scramble (5-12), the Holdouts (13-25), the Long Winter
+  (26-40) and the End of Days (41+). Each one sets how much refills in looted buildings, how well foraging works, what things
+  cost, how many of the dead wander, and which world events can happen. The Director walks a window of the journey that
+  fits the phase instead of looping it. When the Holdouts begin the soldiers come apart: half their outposts turn raider.
+* *Factions with outposts.* The era's five factions (soldiers, civilians, raiders, the cult, the people looking for a cure)
+  start with a handful of buildings each. Once a day they gain or lose supplies and strength, move into empty buildings
+  near their own, fight hostile neighbours (raiders fight everyone; the cult fights soldiers and scientists; soldiers and
+  scientists fall out in the Holdouts; the civilians and the cult in the Winter), and lose garrison to passing hordes. An
+  outpost that loses its last defender is taken by the winner or falls to the dead. What happens is reported each day
+  (places you know, or anywhere once you have a radio) and kept in *Menu > The world*.
+* *Outposts are places.* The ground floor of an outpost holds its garrison and the one in charge, and the dead are
+  cleared from it. At the door a voice behind a barricade stops you, unless they like you: talk your way in, pay, offer
+  food, back out, or force it (the whole building turns on you). Raider dens shoot on sight. Inside, the one in charge
+  trades (prices by your standing with them), takes requests (food, medicine during a fever), lets you sleep, and can spare
+  someone to come with you or to live at your base. Kill a hostile garrison to the last and the building is empty and
+  yours to claim. You cannot claim a building someone holds.
+* *Sieges and calls for help.* Friendly outposts get surrounded: you hear about it, the dead are at their doors when you
+  arrive, and breaking the siege earns their thanks (+15 standing, a gift); ignore it and it costs them.
+* *World events*, announced before they land (twice as early with a radio): a supply drop (marked, contested), a voice
+  on the air (sometimes true, sometimes bait), the grey (fog for days), a migration (a huge horde crossing the map), a
+  firebreak (a district burned: buildings emptied, outposts gutted, fire on the ground), the change (more of the special
+  dead, for good), a blood moon (a night of raids), a fever at an outpost, a war between two factions (you choose a side
+  or none), the cult's procession to open someone's doors (stand in its way or not), a warlord who unites the raiders
+  (kill them in their seat and the raiders break), famine and cold (prices, food, foraging, stamina), and, at the end of
+  days, the fall of the old refuge.
+* *Your people.* Room for one, plus two for every cot you build (up to four cots). Your companion can stay at the base, and anyone there
+  can come out with you. People also come from outposts, from refugees at your door, and from true broadcasts. Each has a
+  job: guard (holds the walls when you are away and thins the raids when you are not), scavenge (brings things back from
+  nearby buildings, with a risk that grows with the phase), medic, build, grow food (greenhouse) and research
+  (laboratory). Every morning at six they eat from the locker and report; hungry people lose heart and leave.
+* *Projects* built together over days: a radio, a lookout, a greenhouse, an infirmary, a wall, a generator, a laboratory
+  and a vehicle, each with an effect. Materials come from your pack and the locker (base structures too).
+* *Three endings besides death*, each a final stand of 40-60 turns at your base with no door to run for: the cure
+  (laboratory, 100 research, the three components and the deciphered formula), the exodus (finish the vehicle) and the
+  sanctuary (a radio, three allied outposts, day 20). The old refuge's bench no longer makes the cure in endless.
 
 **Raiders are a squad, not a target.** Camps are no longer a clearing with some men standing in it:
 * *Ambushes.* Half of a camp's raiders lie hidden in cover 4-9 tiles round it. They are not drawn, not targeted and not

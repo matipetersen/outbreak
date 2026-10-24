@@ -50,6 +50,8 @@ function dlg_facts(game) {
     const left = game.deadline_days - game_day(game);
     out.push(left > 0 ? `"The way out closes after day ${game.deadline_days}. It is day ${game_day(game)}. ${left} to go, if you are counting."` : '"This is the last day. Whatever you mean to do, do it now."');
   }
+  out.push(...saga_news(game));
+  if (game.front) out.push(`"The tide is ${dist_words(game.era.id, Math.max(0, Math.round(front_gap(game))))} behind you, give or take. Do not sleep tonight if you can help it."`);
   if ((game.rep.military || 0) <= -20) out.push('"The soldiers know your name, and not kindly. Be careful on the roads."');
   if ((game.rep.enclave || 0) >= 30) out.push('"People here speak well of you. Do not let it go to your head, but it is nice to hear."');
   return out;

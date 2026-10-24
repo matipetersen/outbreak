@@ -65,6 +65,7 @@ function serialize_game(game) {
     season_n: game.season_n, world_uid_max: game.world_uid_max, pending_shared: game.pending_shared, applied_tombs: game.applied_tombs, tomb_at: game.tomb_at,
     named_state: game.named_state, taken_components: game.taken_components,
     deadline_days: game.deadline_days, lost_turns: game.lost_turns, incidents: game.incidents,
+    front: game.front, saga: game.saga, win_kind: game.win_kind,
     generation: game.generation, current_origin: game.current_origin, fallen: game.fallen, fallen_bodies: game.fallen_bodies, death_notice: game.death_notice, opening_id: game.opening_id, intro_pages: game.intro_pages,
   };
   return JSON.stringify(data);
@@ -109,6 +110,9 @@ function deserialize_game(json) {
     for (const lv of Object.values(g.levels)) for (const a of lv.actors) if (a.uid === d.stalker_uid) g.stalker = a;
     for (const f of g.followers) if (f.z.uid === d.stalker_uid) g.stalker = f.z;
   }
+  g.front = d.front || null; g.saga = d.saga || null; g.win_kind = d.win_kind || '';
+  if (g.scenario.front && !g.front && !g.over) { g.deadline_days = 0; front_setup(g); }                 // a Dash saved before the tide
+  if (g.scenario.escalates && !g.saga && !g.over) saga_setup(g);                                           // an endless world saved before it had factions
   g.update_fov();
   return g;
 }

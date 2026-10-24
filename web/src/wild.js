@@ -159,6 +159,7 @@ function wild_forage(game) {
   let chance = (lv.tile(p.x, p.y) === T.BRUSH ? 0.65 : 0.4) + (deep ? 0.2 : 0);
   if (game.weather === 'rain' || game.weather === 'fog') chance += 0.1;
   if (!game.clock.is_day) chance -= 0.25;
+  chance *= saga_mod(game, 'forage');                                     // a famine, a cold snap, a picked-over world
   if (game.rng.random() < chance) {
     const n = game.rng.randint(1, 2);
     if (deep && game.rng.random() < 0.25) { game.give_item(make_item('herbs', n)); game.msg(`You find wild herbs growing in the shade (${n}).`, 'good'); }

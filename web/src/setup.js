@@ -37,6 +37,8 @@ function setup_game(game) {
   mutation_build(game);
   _setup_documents(game);
   _populate(game);
+  front_setup(game);
+  saga_setup(game);
   if (!shared) comp_spawn_start(game);
   if (!game.profile.sun_burn && !shared) start_ring(game);
   if (shared) _become_survivor(game, opening);
@@ -276,7 +278,8 @@ function _intro(game) {
   } else {
     const pad = game.pois[game.pad_id];
     const d = compass(pad.x - p.x, pad.y - p.y);
-    game.msg(`Rumour on ${era.radio}: the last way out is ${d} of here, roughly ${dist_words(era.id, cheb(poi_pos(pad), [p.x, p.y]))}. It closes after day ${game.deadline_days}.`, 'lore');
+    if (game.front) game.msg(`Rumour on ${era.radio}: the last transport is loading ${d} of here, roughly ${dist_words(era.id, cheb(poi_pos(pad), [p.x, p.y]))}. Behind you the tide is rising: do not stop for long.`, 'lore');
+    else game.msg(`Rumour on ${era.radio}: the last way out is ${d} of here, roughly ${dist_words(era.id, cheb(poi_pos(pad), [p.x, p.y]))}. It closes after day ${game.deadline_days}.`, 'lore');
   }
   if (game.profile.sun_burn) game.msg('The sun keeps them in the dark places. You have until dusk to find shelter and answers.', 'warn');
   else game.msg('The dead are closing in from every side but one. Move!', 'warn');

@@ -66,7 +66,7 @@ function speed_now(game, z) {
   if (game.is_dark()) s *= game.profile.night_speed;
   else if (game.clock.is_day) s *= game.profile.day_speed;
   if (z.state === 'idle') s *= 0.5;
-  return s;
+  return s * saga_mod(game, 'zombie_speed');
 }
 
 function ai_run(game) {

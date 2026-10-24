@@ -3,11 +3,11 @@ const { OB, make, empty_level, teleport } = require('./helpers');
 
 function calm(g) { empty_level(g.world.level); g.hordes.length = 0; g.ring = null; return g; }
 
-// dash: no parts, a road with incidents
+// dash: no parts, a road with incidents, and a tide instead of a calendar
 for (const era of Object.keys(OB.CONTENT.eras)) {
   const g = make({ era, scenario: 'dash', seed: 3 });
   assert.strictEqual(g.scenario.requirements.length, 0); assert(g.requirements_met());
-  assert.strictEqual(g.incidents.length, 5); assert(g.deadline_days >= 8);
+  assert.strictEqual(g.incidents.length, 5); assert.strictEqual(g.deadline_days, 0); assert(g.front && g.front.pos < 0);
 }
 // the deadline follows the route
 {
@@ -27,7 +27,7 @@ for (const era of Object.keys(OB.CONTENT.eras)) {
   g.clock.turn = 5000;
   for (let i = 0; i < 200; i++) assert(!OB.pick_event(g).id.startsWith('road_'));
 }
-// every road event choice resolves, and lost time counts against the deadline
+// every road event choice resolves, and lost time counts against the deadline (or feeds the tide)
 {
   const evs = OB.CONTENT.events.filter((e) => e.id.startsWith('road_'));
   assert.strictEqual(evs.length, 6);
@@ -35,21 +35,21 @@ for (const era of Object.keys(OB.CONTENT.eras)) {
     const g = calm(make({ scenario: 'dash', seed: 3 }));
     g.player.coins = 50; for (const [id, q] of [['food', 3], ['noisemaker', 1], ['bandage', 2]]) g.give_item(OB.make_item(id, q));
     g.pending_event = OB.start_event(g, ev);
-    const lost = g.lost_turns;
+    const lost = g.lost_turns, tide = g.front.pos;
     g.resolve_event(i);
     assert(!(g.over && g.over.kind === 'dead'), `${ev.id}/${i} killed the player outright`);
     const ch = ev.choices[i];
-    if (ch.outcomes.length === 1 && 'time' in ch.outcomes[0].fx) assert(g.lost_turns > lost, `${ev.id}/${i}: lost time not counted`);
+    if (ch.outcomes.length === 1 && 'time' in ch.outcomes[0].fx) { assert(g.lost_turns > lost, `${ev.id}/${i}: lost time not counted`); assert(g.front.pos > tide, `${ev.id}/${i}: the tide did not gain`); }
   }
-  const g = calm(make({ scenario: 'dash', seed: 3 }));
+  const g = calm(make({ scenario: 'extraction', seed: 3 }));
   g.clock.turn = (g.deadline_days - 1) * 240 + 100; g.wait(3); assert(!g.over);
   g.lost_turns = 240 * 3; g.clock.turn = (g.deadline_days - 3) * 240 + 238; g.wait(5);
   assert(g.over && g.over.kind === 'left_behind');
 }
 // the new fields survive a save
 {
-  const g = make({ scenario: 'dash', seed: 3 }); g.lost_turns = 55; g.incidents[1].done = true;
+  const g = make({ scenario: 'dash', seed: 3 }); g.lost_turns = 55; g.incidents[1].done = true; g.front.pos = 12.5;
   const g2 = OB.deserialize_game(OB.serialize_game(g));
-  assert.strictEqual(g2.lost_turns, 55); assert.strictEqual(g2.deadline_days, g.deadline_days); assert(g2.incidents[1].done);
+  assert.strictEqual(g2.lost_turns, 55); assert.strictEqual(g2.deadline_days, g.deadline_days); assert(g2.incidents[1].done); assert.strictEqual(g2.front.pos, 12.5);
 }
 console.log('road: dash, route-based deadline and road incidents OK');

@@ -59,7 +59,8 @@ function player_died(game, kind, cause) {
   const new_origin = rng.choice(origins.length ? origins : Object.keys(CONTENT.origins));
   const refuge = game.pois[game.refuge_id], world = game.world.level;
   gen_near(game, refuge.x, refuge.y);
-  const pos = world.free_spot_near(refuge.x, refuge.y + 2, 8) || world.free_spot_near(game.world.start[0], game.world.start[1], 8);
+  const fallen_refuge = !!(game.saga && game.saga.refuge_fallen);
+  const pos = (!fallen_refuge && world.free_spot_near(refuge.x, refuge.y + 2, 8)) || world.free_spot_near(game.world.start[0], game.world.start[1], 8);
   const known = Array.from(game.know.known).sort();
   const keep = Math.floor(known.length * KEEP_KNOWLEDGE), kept = [];
   for (let i = 0; i < keep; i++) kept.push(known.splice(rng.randint(0, known.length - 1), 1)[0]);
@@ -77,6 +78,7 @@ function player_died(game, kind, cause) {
   np.max_hp += 3 * (np.level - 1); np.hp = np.max_hp;
   if (game.live_started) game.invuln_until = game.clock.turn + 40;
   game.ring = null; game.final = null; game.pending_event = null; game.followers = [];
+  front_reset(game);
   game.heat = Math.min(game.heat, 30.0);
   for (const a of world.actors) if (a.kind === 'human' && (a.state === 'follow' || a.state === 'wait')) a.state = 'patrol';
   game.companion_uid = 0; game.pet_uid = 0;

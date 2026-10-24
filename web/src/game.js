@@ -80,7 +80,7 @@ class Game {
     this.regions = []; this.region_id = -1; this.checkpoints = {}; this.foraged = [];
     this.marks = []; this.nemeses = []; this.pet_uid = 0; this.companion_uid = 0; this.fallen_allies = []; this.story = []; this.objective_seen = {};
     this.weather = 'clear'; this.sources = []; this.alarmed = []; this.last_step_note = -999; this.pings = []; this.flash_turn = -999;
-    this.base_id = null; this.raid_next = 0;
+    this.base_id = null; this.raid_next = 0; this.front = null; this.saga = null; this.win_kind = '';
     this.generation = 1; this.current_origin = 'medic'; this.fallen = []; this.fallen_bodies = {}; this.killer = null; this.death_notice = ''; this.patrol_nodes = []; this.opening_id = ''; this.intro_pages = [];
     this.followers = []; this.final = null; this.formula_found = false; this.applied_docs = new Set(); this.scent = {};
     this.visible = new Set(); this.on_autosave = null; this._field = null; this._field_key = ''; this._step_parity = 0; this._tired_parity = 0;
@@ -155,6 +155,7 @@ class Game {
     h.hostile = true;
     const f = h.faction || 'enclave';
     this.rep[f] = (this.rep[f] || 0) - 20;
+    if (h.outpost && this.saga) outpost_turn(this, h.outpost);
     this.msg(`The ${h.name.toLowerCase()} turns on you!`, 'bad', true);
     military_rally(this, h);
     if (['trader', 'healer', 'scholar'].includes(h.role)) this.rep.enclave = (this.rep.enclave || 0) - 40;
@@ -299,6 +300,8 @@ class Game {
     this.pings = this.pings.filter((q) => t - q.turn <= 6);
     if (t % 5 === 0) mutation_crossing(this);
     this._time_events(); weather_tick(this); world_tick(this); this._base_tick(); military_tick(this); comp_tick(this); objective_watch(this); dir_tick(this); pets_tick(this); memory_tick(this);
+    front_tick(this); if (this.over) return;
+    saga_tick(this); if (this.over) return;
     if (this.incidents.length && t % 5 === 0) this._check_incidents();
     if (this.final) this._final_tick();
     if (t % 40 === 0) this._maybe_event();
@@ -314,8 +317,8 @@ class Game {
     const lv = this.level, p = this.player, hostile = hostiles_in(lv).length > 0;
     lv.safe = !hostile && !this.final;
     if (hostile || this.final || this.clock.turn < this.raid_next || !this.clock.is_night) return;
-    if (this.rng.random() >= 0.03) return;
-    const n = Math.min(10, Math.floor((3 + Math.floor(p.level / 3) + Math.floor(game_day(this) / 5)) * Math.max(1.0, this.pressure)));
+    if (this.rng.random() >= 0.03 * saga_raid_chance(this)) return;
+    const n = saga_raid_size(this, Math.min(10, Math.floor((3 + Math.floor(p.level / 3) + Math.floor(game_day(this) / 5)) * Math.max(1.0, this.pressure))));
     const spots = [];
     for (let y = lv.entry[1] - 5; y <= lv.entry[1] + 5; y++) for (let x = lv.entry[0] - 5; x <= lv.entry[0] + 5; x++) if (lv.free(x, y) && cheb([x, y], [p.x, p.y]) > 2) spots.push([x, y]);
     for (let i = spots.length - 1; i > 0; i--) { const j = this.rng.randint(0, i); [spots[i], spots[j]] = [spots[j], spots[i]]; }
@@ -370,7 +373,7 @@ class Game {
       if (p.hunger >= 100 && t % 5 === 0) { p.hp -= 1; if (p.hp <= 0) { this.end('dead', 'starved'); return; } }
     }
     if (p.hp < p.max_hp && !p.bleeding && p.hunger < 75 && t % 12 === 0) p.hp += 1;
-    p.stamina = Math.min(p.max_stamina, p.stamina + (p.sprinting ? 0.3 : 0.9));
+    p.stamina = Math.min(p.max_stamina, p.stamina + (p.sprinting ? 0.3 : 0.9) * saga_mod(this, 'stamina'));
     const near = this.level.actors.some((a) => a.kind === 'zombie' && a.state === 'hunt' && cheb([a.x, a.y], [p.x, p.y]) < 9);
     if (near) {
       this.add_panic(0.15);
@@ -496,17 +499,17 @@ class Game {
     }
   }
 
-  // endless worlds only: 1.0 for the first days, then +6% a day up to x3
-  get pressure() { return this.scenario.escalates ? Math.min(3.0, 1.0 + 0.06 * Math.max(0, game_day(this) - 3)) : 1.0; }
+  // endless worlds only: 1.0 for the first days, then +3.5% a day up to x2.4 (the rest of the danger is in what the world does, not in bigger numbers)
+  get pressure() { return this.scenario.escalates ? Math.min(2.4, 1.0 + 0.035 * Math.max(0, game_day(this) - 3)) : 1.0; }
 
   // endless worlds: places you picked clean slowly fill up again
-  _restock() {
+  _restock(chance = 0.5) {
     let n = 0;
     for (const lv of Object.values(this.levels)) {
       if (lv === this.world.level) continue;
       for (const k of Object.keys(lv.containers)) {
         const c = lv.containers[k];
-        if (c.opened && this.rng.random() < 0.5) {
+        if (c.opened && this.rng.random() < chance) {
           c.opened = false; c.loot = roll_items(this.rng, this.era, this.poi_kind_of(lv), 1.0, this.diff.loot * 0.7); c.coins = this.rng.randint(0, 4);
           const [x, y] = [+k % lv.w, Math.floor(+k / lv.w)]; lv.set_tile(x, y, T.CRATE); n++;
         }
@@ -522,7 +525,7 @@ class Game {
     const eff_day = day + Math.floor(this.lost_turns / 240);        // the road's lost time counts against the deadline
     if (this.deadline_days && eff_day > this.deadline_days && !this.final) this.end('left_behind', '');
     else if (this.deadline_days && c.turn % 240 === 0 && eff_day === this.deadline_days) this.msg('The last day. By nightfall the way out will be gone.', 'obj');
-    if (sc.escalates && c.turn % 240 === 0 && day > 1) {
+    if (sc.escalates && !this.saga && c.turn % 240 === 0 && day > 1) {
       if (day % 4 === 0) this._restock();
       if (day % 5 === 0) this.msg(`Day ${day}. You are still here. The dead are ${Math.round(this.pressure * 100)}% of what they were on day one.`, 'lore');
     }
@@ -645,6 +648,7 @@ class Game {
     this.levels[level_id] = lv;
     for (const z of lv.actors) z.birth_day = game_day(this);
     if (poi.kind === 'refuge') this._populate_refuge(lv);
+    front_on_level_created(this, lv, poi); saga_on_level_created(this, lv, poi);
     if (this.shared) this.shared.on_level_created(lv);
     return lv;
   }
@@ -665,6 +669,7 @@ class Game {
     if (this.final && this.final.exit && this.final.exit[0] === x && this.final.exit[1] === y && this.level.poi_id === this.final_site_id) { this._escape(); return true; }
     const lv = this.level, p = this.player, old = lv;
     const portal = lv.portals[lv.idx(x, y)];
+    if (this.front && portal.target === this.pad_id + ':0') { front_board(this); return true; }      // Dash: the transport's doors are the finish line
     const target = portal.target === 'world' ? this.world.level : this.ensure_level(portal.target);
     let dest;
     if (!(portal.pos[0] === -1 && portal.pos[1] === -1)) {
@@ -696,6 +701,7 @@ class Game {
       if (this._unread_in(target)) this.msg('You glimpse written pages somewhere in here.', 'lore');
     }
     this.msg(portal.target !== 'world' ? `You enter ${target.name}.` : 'You step back outside.', 'info');
+    if (portal.target !== 'world') saga_on_enter(this, target);
     if (portal.target === 'world') { comp_on_return(this); pets_on_return(this); }
     this._spend(1);
     return true;
@@ -1061,6 +1067,7 @@ class Game {
 
   use_bench(ask = false) {
     const lv = this.level, site = this.pois[this.final_site_id];
+    if (this.saga && lv.kind === 'haven') { this.msg('The old bench is cold and the people who used it are gone. If there is going to be a cure, it will be made in a laboratory you build yourself.', 'info'); return false; }
     if (lv.poi_id !== site.id) { this.msg('It is idle. This is not where you need to be.', 'info'); return false; }
     if (this.final) { this.msg('You are already working. Hold out!', 'warn'); return false; }
     if (!this.requirements_met()) {
@@ -1092,17 +1099,18 @@ class Game {
       if (this.clock.turn % 12 === 0) this._exit_hint();
     } else {
       f.turns_left -= 1;
+      if (f.turns_left <= 0 && f.no_exit) { this.final = null; this.win_kind = f.kind; this.msg('Dawn. It is over, and you are still here.', 'good', true); this.end('won'); return; }
       if (f.turns_left <= 0) this._start_breakout(f);
     }
     f.next_wave -= 1;
     if (f.next_wave <= 0) {
       const progress = 1.0 - Math.max(0, f.turns_left) / Math.max(1, f.total);
       f.next_wave = Math.max(3, 7 - Math.floor(progress * 4));       // the waves come faster as it goes on
-      const n = 2 + Math.floor(p.level / 4) + (this.diff.zombies > 1 ? 1 : 0) + Math.floor(progress * 3);
+      const n = Math.max(1, 2 + Math.floor(p.level / 4) + (this.diff.zombies > 1 ? 1 : 0) + Math.floor(progress * 3) - saga_wave_cut(this));
       const pts = [null].concat(f.doors);
       this._siege_wave(f, pts[this.rng.randint(0, pts.length - 1)], n);
     }
-    if (!f.boss_done && f.turns_left <= Math.floor(this.scenario.final_turns / 2)) {
+    if (!f.boss_done && f.turns_left <= Math.floor(f.total / 2)) {
       f.boss_done = true;
       if (p.humanity < 40) {
         this.msg("People step out of the dark with weapons. 'We have heard about you.'", 'bad', true);
@@ -1181,6 +1189,7 @@ class Game {
 
   objectives() {
     const sc = this.scenario;
+    if (this.saga) { const out = saga_objectives(this), errand = comp_personal_objective(this); if (errand) out.push(errand); return out; }
     const out = this.requirements().map(([n, done, h]) => [`${n}: ${h}`, done]);
     const site = this.pois[this.final_site_id];
     out.push([`${cap(sc.final_verb)} at ${site.revealed ? site.name : 'location unknown'}`, false]);
