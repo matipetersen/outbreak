@@ -51,6 +51,29 @@ and three endings (cure, exodus, sanctuary). Both patch the scenario text export
 terminal game keeps the old Dash and Endless. Everything is in the save (`front`, `saga`); older saves get a tide or a
 city when they load. Tests: `test/tide.test.js`, `test/saga.test.js`.
 
+## Battle: squads against the dead (web only)
+
+A separate mode on the title screen (**Battle**), with its own setup and save (`outbreak.battle.v1`). It is WEGO: every
+turn you give orders to four squads while nothing moves, then **EXECUTE** plays ten seconds of battle that you watch but
+cannot change (x1, x2, x4 or skip). Engine: `src/battle.js` (pure, deterministic: the whole state, random stream included,
+is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `src/battle_ui.js`. Tests: `test/battle.test.js`.
+
+* **Objectives**: *Hold the refuge* (ten turns from dusk into the dark; the dead inside wear it down; squads inside at the
+  end of a turn restock ammunition) and *Bring them out* (survivors barricaded in a house to the north come out to the
+  first squad at their door and follow it; bring at least half to the south edge in ten turns).
+* **Orders**: tap a squad (or its card), then tap a tile or drag a route; *Fire at will* / *Hold fire*; *Walk* / *Run*
+  (nobody shoots while running); one special action: shield squads build a barricade (four quiet seconds, four per
+  battle), scouts throw a lure that calls the dead for two turns. Orders carry over between turns.
+* **Squads** come from the era (longbowmen and Greek fire in 1348, M16s and an M60 in 1986, pulse rifles in the station).
+  Every shot is noise and noise brings the dead; accuracy falls with range; in the dark you see and shoot five tiles.
+  Morale falls with losses and when the dead swarm a squad; a broken squad runs for safety until it rallies.
+* **The dead** come from the zombie preset: speed, sight, hearing, smell, how a bite spreads and how fast it turns a man,
+  head-shot-only killing, the dead rising, fences that only the swarm climbs, the sun-shy dead that hide in buildings by
+  day and burn in the open, spores in closed rooms, mutations that get worse each turn, and the specials (brutes break
+  barricades, screamers call the horde, bloaters burst, leapers pounce, clickers hunt by sound).
+* **What you see while planning**: the next wave and where it comes in (red marks on the edge), and a red arrow on every
+  zombie you can see, pointing where it is going.
+
 ## Touch controls
 
 * **Pad** (bottom left): hold to keep moving. The centre dot waits; hold it to rest.

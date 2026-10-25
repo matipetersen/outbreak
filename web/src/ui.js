@@ -1534,7 +1534,7 @@ function showEvent() {
 }
 
 // ---------------------------------------------------------------- screens: title, new game, ending
-function hideAll() { for (const id of ['#title', '#newgame', '#ending']) $(id).hidden = true; for (const id of ['#hud', '#controls', '#alert', '#aim']) $(id).hidden = true; }
+function hideAll() { for (const id of ['#title', '#newgame', '#ending', '#battle']) $(id).hidden = true; for (const id of ['#hud', '#controls', '#alert', '#aim']) $(id).hidden = true; }
 function showGameUi() { hideAll(); $('#hud').hidden = false; $('#controls').hidden = false; resize(); refresh(); }
 
 function trySave() {
@@ -1554,7 +1554,8 @@ function showTitle() {
   if (has_save()) m.append(btn('btn main', 'Continue', () => {
     try { startGame(null, load_game()); } catch (e) { toast('That save could not be loaded'); delete_save(); showTitle(); }
   }));
-  m.append(btn('btn', 'New game', showNewGame), btn('btn', 'Records', showRecords), btn('btn', 'How to play', () => openHelp()));
+  if (bt_has_save()) m.append(btn('btn', 'Continue battle', () => window.OB_BATTLE.resume()));
+  m.append(btn('btn', 'New game', showNewGame), btn('btn', 'Battle', () => window.OB_BATTLE.setup()), btn('btn', 'Records', showRecords), btn('btn', 'How to play', () => openHelp()));
   w.append(m);
   w.append(el('p', 'note', 'A zombie survival roguelike. Turn based, one run, one life.'));
   if (!lsSet('outbreak.probe', 1)) w.append(el('p', 'note t-warn', 'This browser blocks storage, so saving will not work here.'));
@@ -1694,6 +1695,16 @@ function boot() {
   loadSprites();
   showTitle();
   requestAnimationFrame(frame);
+  // what the battle front-end (battle_ui.js) borrows: the screens and the sprite atlas
+  window.OB_UI = { hideAll, showTitle, lsGet, lsSet, prefs,
+    sprite: (c, era, name, px, py, w) => {
+      if (typeof SPRITE_DATA === 'undefined' || prefs.sprites === false) return false;
+      const set = SPR_SETS[SPRITE_DATA.era[era] || SPRITE_DATA.default] || SPR_SETS[SPRITE_DATA.default], m = set && set.map[name];
+      if (!m) return false;
+      c.imageSmoothingEnabled = false;
+      c.drawImage(set.img, m[0] * set.s, m[1] * set.s, set.s, set.s, px, py, w + 0.5, w + 0.5);
+      return true;
+    } };
   window.OB_DEBUG = { get game() { return game; }, get view() { return view; }, showEvent, showEnding, refresh, openDoc, afterAction, start: (cfg) => startGame(Object.assign(default_config(), cfg)), prefs, openMenu, openInventory, openDocs, openSkills, openPlaces, openCraft, openStatus };
 }
 boot();
