@@ -249,7 +249,7 @@ function drawActor(a, px, py, ts) {
   if (sprOn() && (a.kind !== 'animal' || actorSprite(a))) return drawActorSprite(a, px, py, ts);
   const c = ctx, cx = px + ts / 2, cy = py + ts / 2;
   let fill, ink = '#fff', ring = null;
-  if (a.kind === 'player') { fill = '#efe8d2'; ink = '#0d1214'; ring = '#d99a2b'; }
+  if (a.kind === 'player') { fill = '#efe8d2'; ink = '#0d1214'; ring = game.riding ? '#8a5630' : '#d99a2b'; }
   else if (a.kind === 'zombie') { fill = ZCOL[a.special] || '#b94a3c'; if (a.flags.includes('boss')) ring = '#fff'; if (a.state === 'dormant') c.globalAlpha = 0.7; }
   else if (a.kind === 'animal') { fill = a.pet ? '#c79bf2' : a.stray ? '#68c0c8' : a.species === 'wolf' ? '#8a8f9a' : a.state === 'charge' ? '#c47a3a' : '#7aa35a'; ink = '#0d1214'; }
   else { fill = a.hostile ? '#c9992a' : '#55b3c4'; ink = '#0d1214'; }
@@ -289,6 +289,10 @@ function drawActorSprite(a, px, py, ts) {
   if (a.kind === 'player') { c.strokeStyle = '#d99a2b'; c.lineWidth = 2; c.beginPath(); c.ellipse(cx, py + ts * .86, ts * .36, ts * .14, 0, 0, 7); c.stroke(); }
   else if (a.kind !== 'zombie') { c.fillStyle = a.hostile ? 'rgba(226,87,63,.55)' : 'rgba(85,179,196,.5)'; c.beginPath(); c.ellipse(cx, py + ts * .86, ts * .34, ts * .12, 0, 0, 7); c.fill(); }
   if (a.kind === 'zombie' && a.state === 'dormant') c.globalAlpha = 0.7;
+  if (a.kind === 'player' && game.riding && activeSprites().map.a_horse) {         // in the saddle: the horse, and you on it
+    const hs = ts * 1.25; spr('a_horse', cx - hs / 2, cy - hs / 2 + ts * .08, hs);
+    spr(actorSprite(a), cx - ts * .38, cy - ts * .78, ts * .76);
+  } else
   spr(actorSprite(a), cx - sz / 2, cy - sz / 2 - (sz - ts) * .1, sz);
   c.globalAlpha = 1;
   if (a.kind === 'zombie' && a.flags.includes('boss')) { c.strokeStyle = 'rgba(255,255,255,.8)'; c.lineWidth = 1.5; c.beginPath(); c.arc(cx, cy, ts * .52, 0, 7); c.stroke(); }
@@ -453,6 +457,7 @@ function updateHud() {
   setBar('#b-noi', g.heat, 100, g.heat > 60 ? '#e2573f' : g.heat > 30 ? '#d99a2b' : '#6b7a74');
   const chips = $('#chips'); chips.innerHTML = '';
   const add = (t, cls) => chips.append(el('span', 'chip ' + (cls || ''), t));
+  { const m = mount_current(g); if (m) { const ch = el('button', 'chip ally', `${g.riding ? 'Riding ' : ''}${m.name} ${m.hp}/${m.max_hp}${g.riding && p.sprinting ? ' · gallop' : ''}`); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openMount(m); }); chips.append(ch); } }
   { const pt = pets_current(g); if (pt) { const ch = el('button', 'chip ally', `${pt.name} ${pt.hp}/${pt.max_hp}${pets_hunger(g, pt) !== 'fed' ? ' · ' + pets_hunger(g, pt) : ''}`); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openPet(pt); }); chips.append(ch); } }
   { const ally = comp_current(g); if (ally) { const ch = el('button', 'chip ally', `${ally.name} ${ally.hp}/${ally.max_hp}${ally.infected ? ' · bitten' : ''}${ally.state === 'wait' ? ' · waiting' : ''}`); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openCompanion(ally); }); chips.append(ch); const oc = el('button', 'chip ally', comp_order_of(ally) ? `Order: ${COMP_ORDERS[ally.order][0]}` : 'Orders'); oc.type = 'button'; oc.addEventListener('click', () => { if (!modal && game && !game.over) openOrders(); }); chips.append(oc); } else if (g.fallen_allies.length) add(`Alone · lost ${g.fallen_allies[g.fallen_allies.length - 1][0]}`, 'info'); }
   if (p.infected) add(`INFECTED ${p.infection_timer >= 20 ? Math.round(p.infection_timer / 10) + 'h' : p.infection_timer + ' turns'}`, 'danger');
@@ -571,6 +576,9 @@ function contextAction() {
   if (lv.items[k] || lv.docs[k]) return { label: 'Pick up', sub: lv.docs[k] ? 'document' : 'items here', run: () => g.pickup() };
   const npc = g.adjacent_npc();
   if (npc) return { label: 'Talk', sub: npc.name, run: () => openNpc(npc) };
+  const horse = mount_adjacent(g);
+  if (horse && !g.riding) return { label: horse.mount ? (g.player.count('saddle') ? 'Ride' : 'Horse') : 'Approach', sub: horse.mount ? horse.name : `a wild ${mount_word(g)}`, run: () => openMount(horse) };
+  if (g.riding && !npc) return { label: 'Dismount', sub: g.riding.name, run: () => g.dismount() };
   const pet = g.adjacent_pet();
   if (pet) return { label: pet.pet ? 'Pet' : 'Offer food', sub: pet.stray ? `a stray ${pet.species}` : pet.name, run: () => openPet(pet) };
   if (g.adjacent_tile(T.BED)) return { label: 'Sleep', sub: 'until morning', run: () => confirmSleep() };
@@ -671,6 +679,12 @@ function onTap(sx, sy) {
   if (a && g.is_visible(tx, ty) && a.kind !== 'player') {
     if (a.kind === 'human' && !a.hostile) {
       if (d <= 1) doAction(() => openNpc(a)); else toast('Walk next to them to talk');
+      return;
+    }
+    if (a.kind === 'animal' && a.species === 'horse') {
+      if (d <= 1) doAction(() => openMount(a));
+      else if (!a.mount && is_ranged(weapon_def(g)) && d <= weapon_def(g).reach) doAction(() => g.fire(a));
+      else toast(a.mount ? 'Walk next to it' : 'Creep up next to it');
       return;
     }
     if (a.kind === 'animal' && (a.pet || a.stray)) {
@@ -1214,6 +1228,8 @@ function openHelp() {
     li('Vaults', 'Components lie in locked vaults on the lowest floor. Use the code, or force the door (loud).');
     li('Long press', 'Hold on a tile to see what it is. Pinch to zoom.');
     li('Humanity', 'Your choices on the road decide who trades with you and who you face at the end.');
+    li('Pets', 'Dogs, cats, crows and foxes wander the world as strays (a small teal dot). Walk up to one and tap it (or ACT) to offer it food: dogs say yes most often, foxes least; creeping and a decent reputation help. One pet at a time; feed it or it leaves.');
+    li('Horses', 'Small herds graze on open ground away from the city (striders on the station). They bolt like deer: creep up, tap it and offer food (wild greens are best). Craft a saddle to ride: two tiles a turn, three at a gallop (RUN), no stamina, but loud. You leave it outside buildings. Some blows meant for you hit it; badly hurt, it throws you and bolts. Tap the horse chip for its sheet.');
     li('Bites are for everyone', 'The dead infect the living around you by the same rule as you: your companion, soldiers, guards, raiders. A bitten person turns into one of the dead when the fever runs out. For your companion (talk to them): cut off a bitten arm or leg in time with a blade, slow it with a suppressant, or let them go before it happens. People at your base can be bitten in a raid: you have until the morning after.');
     li('Crafting weapons', 'Menu > Craft. Weapons (nail club, blade, spear, pike, bows), arrows and shields are known from the start and can be made anywhere from wood, scrap and cloth. Beside a workshop (build one in your base) it is faster and sturdier: away from one a weapon or shield comes out at 60% condition and you get one arrow fewer.');
     li('Shields', 'Equip one from the pack: it goes in your off hand and blocks about a fifth (plank) or a third (reinforced) of the blows that land, losing condition each time. It does nothing while you hold a bow, a polearm or a long gun.');
@@ -1305,6 +1321,35 @@ function openSettings(msg) {
 }
 
 // ---------------------------------------------------------------- people, rest and events
+function openMount(a, line = '') {
+  const g = game, word = mount_word(g);
+  openSheet(a.mount ? a.name : `A wild ${word}`, (b) => {
+    const say = (l) => { refresh(); if (g.over) return; const m = mount_current(g); if (m) openMount(m, l); else { closeSheet(); toast(l); } };
+    if (!a.mount) {
+      b.append(el('p', 'event-text', `It lifts its head and watches you. One wrong move and it is gone. Offer it food (wild greens are best), creeping helps. Tamed, it follows you; with a saddle you can ride it.`));
+      if (line) b.append(el('p', 'note say t-ally', line));
+      const acts = el('div', 'actionrow');
+      acts.append(btn('btn main', 'Offer it food', () => say(mount_tame(g, a))));
+      acts.append(btn('btn danger', 'Hunt it', () => { closeSheet(); doAction(() => g.attack(a)); }));
+      b.append(acts);
+      return;
+    }
+    b.append(el('p', 'event-text', `${a.name}, your ${word}. HP ${a.hp}/${a.max_hp}. ${g.riding === a ? 'You are riding.' : a.state === 'wait' ? 'Waiting.' : 'Following you.'}`));
+    b.append(el('p', 'note', 'Riding: two tiles a turn, three at a gallop (RUN), no stamina, but loud. You leave it outside buildings. Blows aimed at you sometimes land on it; badly hurt, it throws you and bolts.'));
+    if (line) b.append(el('p', 'note say t-ally', line));
+    const acts = el('div', 'actionrow');
+    if (g.riding === a) acts.append(btn('btn main', 'Get down', () => { closeSheet(); doAction(() => g.dismount()); }));
+    else {
+      const why = mount_can_ride(g, a);
+      acts.append(btn('btn main' + (why ? ' off' : ''), 'Ride', () => { if (why) { toast(why); return; } closeSheet(); doAction(() => g.ride(a)); }));
+      acts.append(btn('btn', a.state === 'wait' ? 'Follow me' : 'Wait here', () => say(mount_toggle_wait(g, a))));
+    }
+    acts.append(btn('btn', 'Feed it', () => say(mount_feed(g, a))));
+    acts.append(btn('btn danger', 'Let it go', () => { const l = mount_release(g, a); refresh(); closeSheet(); toast(l); }));
+    b.append(acts);
+  });
+}
+
 function openPet(a, line = '') {
   const g = game;
   if (a.stray) {

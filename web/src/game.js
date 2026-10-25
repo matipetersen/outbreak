@@ -80,6 +80,7 @@ class Game {
     this.regions = []; this.region_id = -1; this.checkpoints = {}; this.foraged = [];
     this.marks = []; this.nemeses = []; this.pet_uid = 0; this.companion_uid = 0; this.fallen_allies = []; this.story = []; this.objective_seen = {};
     this.weather = 'clear'; this.sources = []; this.alarmed = []; this.last_step_note = -999; this.pings = []; this.flash_turn = -999;
+    this.riding = null; this.mount_uid = 0; this._ride_step = 0;
     this.base_id = null; this.raid_next = 0; this.front = null; this.saga = null; this.win_kind = '';
     this.generation = 1; this.current_origin = 'medic'; this.fallen = []; this.fallen_bodies = {}; this.killer = null; this.death_notice = ''; this.patrol_nodes = []; this.opening_id = ''; this.intro_pages = [];
     this.followers = []; this.final = null; this.formula_found = false; this.applied_docs = new Set(); this.scent = {};
@@ -657,6 +658,7 @@ class Game {
     const lv = this.level, p = this.player, old = lv;
     const portal = lv.portals[lv.idx(x, y)];
     if (this.front && portal.target === this.pad_id + ':0') { front_board(this); return true; }      // Dash: the transport's doors are the finish line
+    if (this.riding && portal.target !== 'world') mount_leave_outside(this);
     const target = portal.target === 'world' ? this.world.level : this.ensure_level(portal.target);
     let dest;
     if (!(portal.pos[0] === -1 && portal.pos[1] === -1)) {
@@ -756,6 +758,8 @@ class Game {
   }
 
   forage() { return wild_forage(this); }
+  ride(a) { if (!this._begin_action()) return false; const r = mount_ride(this, a); if (!this.riding) this.msg(r, 'warn'); else this.msg(r, 'info'); return !!this.riding; }
+  dismount() { const r = mount_dismount(this); this.msg(r, 'info'); return true; }
   gather() { return wild_gather(this); }
   adjacent_pet() {
     const p = this.player;
@@ -763,6 +767,15 @@ class Game {
     return null;
   }
   _bump_actor(target) {
+    if (target.kind === 'animal' && target.species === 'horse') {
+      if (!target.mount) { this.msg(`A wild ${mount_word(this)}. Creep up and use ACT to offer it food.`, 'info'); return false; }
+      const p = this.player, lv = this.level, a_pos = [p.x, p.y], b_pos = [target.x, target.y];      // your horse in the way: swap
+      lv.occ.delete(lv.idx(a_pos[0], a_pos[1])); lv.occ.delete(lv.idx(b_pos[0], b_pos[1]));
+      p.x = b_pos[0]; p.y = b_pos[1]; target.x = a_pos[0]; target.y = a_pos[1];
+      lv.occ.set(lv.idx(p.x, p.y), p); lv.occ.set(lv.idx(target.x, target.y), target);
+      this._spend(1);
+      return true;
+    }
     if (target.kind === 'animal' && (target.pet || target.stray)) {
       if (target.pet) {                                                    // a pet in the way: you swap places
         const p = this.player, lv = this.level, a_pos = [p.x, p.y], b_pos = [target.x, target.y];
@@ -805,6 +818,7 @@ class Game {
   }
 
   _after_step(tile) {
+    if (this.riding) { mount_step(this, tile); return; }                // on horseback: faster, louder, no stamina
     const p = this.player, lv = this.level, k = lv.idx(p.x, p.y);
     let noise = { [T.ROAD]: 3, [T.BRUSH]: 3, [T.SHALLOW]: 5 }[tile] || 2;
     if (p.sneaking) noise = tile === T.ROAD || tile === T.BRUSH ? 2 : tile === T.SHALLOW ? 3 : 1;      // careful, but never silent
@@ -879,12 +893,14 @@ class Game {
 
   toggle_sneak() {
     const p = this.player;
+    if (this.riding) { this.msg('You cannot creep on horseback. Get down first.', 'warn'); return; }
     p.sneaking = !p.sneaking;
     if (p.sneaking) p.sprinting = false;
     this.msg(p.sneaking ? 'You creep.' : 'You stand up straight.', 'info');
   }
   toggle_sprint() {
     const p = this.player;
+    if (this.riding) { p.sprinting = !p.sprinting; this.msg(p.sprinting ? `You kick ${this.riding.name} into a gallop.` : `${this.riding.name} slows to a walk.`, 'info'); return; }
     if (p.lost.includes('leg')) { p.sprinting = false; this.msg('You cannot run on one leg.', 'warn'); return; }
     p.sprinting = !p.sprinting && p.stamina > 10;
     if (p.sprinting) p.sneaking = false;

@@ -45,6 +45,7 @@ function player_died(game, kind, cause) {
   for (const item of gear) lv.drop([p.x, p.y], item);
   if (lv.occ.get(lv.idx(p.x, p.y)) === p) lv.occ.delete(lv.idx(p.x, p.y));
   lv.corpses[lv.idx(p.x, p.y)] = [game.clock.turn, 2];
+  mount_on_player_death(game, lv, [p.x, p.y]);
   game.fallen_bodies[`${lv.id}|${lv.idx(p.x, p.y)}`] = record;
   const killer = game.killer && game.killer.hp > 0 ? game.killer : null;
   game.killer = null;

@@ -109,6 +109,7 @@ function _populate_chunk(game, cx, cy) {
         break;
       }
     }
+    mount_herd(game, lv, cx, cy, x0, y0, x1, y1, keep);                     // a few wild horses on the open ground (own rng)
     // strays: dogs and cats by the buildings, crows and foxes out on the open ground (own rng)
     const sr = chunk_rng(world.seed, cx, cy, 43);
     if (sr.random() < 0.4) {

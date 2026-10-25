@@ -75,6 +75,7 @@ function wild_bite(game, a) {            // armour takes the edge off and wears,
 
 function wild_tick(game, a) {
   const p = game.player, lv = game.level, t = game.clock.turn;
+  if (a.mount) { mount_tick_animal(game, a); return; }                          // your horse
   if (!WILD_SPECIES[a.species]) { pets_tick_animal(game, a); return; }          // a dog, a cat, a crow, a fox: strays and pets
   if (lv.kind !== 'overworld') return;
   const d = cheb(apos(a), apos(p));

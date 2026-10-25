@@ -312,6 +312,7 @@ function zombie_attack(game, z) {
   if (shield_block(game, z)) return;
   const armor = p.armor ? game.item_def(p.armor.id) : null;
   const raw = game.rng.randint(z.dmg[0], z.dmg[1]) * game.diff.damage;
+  if (game.riding && mount_take_hit(game, raw)) return;
   const dmg = Math.max(1, Math.round(raw - (armor ? armor.defense : 0)));
   if (armor && p.armor.dur !== null) {
     p.armor.dur -= 1;
@@ -338,6 +339,7 @@ function human_attack(game, h) {
     game.msg(`The ${h.name.toLowerCase()} ${d > 1 ? 'shoots' : 'swings'} and misses.`, 'combat'); return;
   }
   if (shield_block(game, h)) return;
+  if (game.riding && mount_take_hit(game, game.rng.randint(h.dmg[0], h.dmg[1]) * game.diff.damage)) return;
   const armor = p.armor ? game.item_def(p.armor.id) : null;
   const dmg = Math.max(1, Math.round(game.rng.randint(h.dmg[0], h.dmg[1]) * game.diff.damage - (armor ? armor.defense : 0)));
   game.msg(`The ${h.name.toLowerCase()} hits you for ${dmg}.`, 'bad');

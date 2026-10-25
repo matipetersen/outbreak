@@ -61,6 +61,16 @@ is created and fires once when you get close. Choices cost items, health, humani
 All three end with a hold-out finale. Who shows up depends on your **humanity**: the Alpha if you stayed human,
 armed people who have heard about you if you did not.
 
+**Horses (web only).** Small herds of wild horses (striders on the station) graze on open ground away from the city:
+about one chunk in three that has some, never in the woods or within 25 tiles of the start. They notice you from 6 tiles
+(3 creeping) and bolt like deer. Get next to one (tap it or ACT) and offer food: 30%, +20% creeping, +15% with wild greens,
++10% if you are decent; a refusal sends it running. Tamed, it follows you or waits, heals slowly and shies from the dead.
+To ride you need a **saddle** (Craft: 3 cloth, 1 wood, 1 scrap). On horseback you cover two tiles a turn, three at a gallop
+(RUN), spend no stamina and cannot creep, but hooves are loud (noise 6, 10 at a gallop). You cannot ride indoors: going
+through a door leaves it tied outside. 45% of the blows aimed at the rider land on the horse; under 35% health it may throw
+you (4 damage) and bolt, and if it dies you are thrown and it is lost. Tap the horse chip for its sheet. (`web/src/mounts.js`,
+the sprite is drawn in `web/art/animals.py`)
+
 **The bite is for everyone (web only).** The dead used to only hurt the living around you. Now a zombie's bite infects
 them by the same rule as you: the strain's chance per bite, less what their armour stops (soldiers 30%, scouts and guards
 15%, raiders 10%, your companion whatever you gave them to wear), a fever on the strain's own clock, and at the end they
