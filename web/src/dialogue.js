@@ -2,6 +2,25 @@
 // The same line, worded for the age: no rifles or doctorates in the middle ages.
 function dlg_era(game, text) {
   if (game.era.id === 'medieval') for (const [o, n] of CONTENT.dialogue.MEDIEVAL_SWAPS) text = text.split(o).join(n);
+  return dlg_when(game, text);
+}
+
+// The lines were written for people who have lived through weeks of this. The game starts on the day it starts: until enough
+// time has passed, what they say about how long it has been follows the calendar (no rank lost on day three, on day one).
+const DLG_NUMBERS = ['', 'one', 'two', 'three', 'four', 'five', 'six'];
+const DLG_WHEN = [
+  [/weeks ago/g, (d) => (d >= 14 ? null : d <= 1 ? 'this morning' : d === 2 ? 'yesterday' : d < 7 ? `${DLG_NUMBERS[d - 1]} days ago` : 'a week ago')],
+  [/in the first month/g, (d) => (d >= 30 ? null : d < 3 ? 'when this started' : 'in the first days')],
+  [/I lose one a week\. I do the sums every Sunday\. It does not get easier, only more regular\./g, (d) => (d >= 8 ? null : 'I have lost two since this started. I keep count. I do not know what else to do with the number.')],
+  [/The list is wrong every week\./g, (d) => (d >= 8 ? null : 'The list is wrong every day.')],
+  [/since the first night/g, (d) => (d >= 2 ? null : 'since this started')],
+  [/They stripped us of rank on day three\./g, (d) => (d >= 4 ? null : 'Command has gone quiet. Rank is just a word now.')],
+  [/It has been a while since anybody was\./g, (d) => (d >= 3 ? null : 'It has been hours since anybody was.')],
+  [/got (stuck|shut) in (one|a granary) for two days when (it|the bells|the lockdown) started\./g, (d, m) => (d >= 3 ? null : m.replace(' for two days', '').replace(/started\.$/, 'started, and only just got out.'))],
+];
+function dlg_when(game, text) {
+  const d = game_day(game);
+  for (const [re, fn] of DLG_WHEN) text = text.replace(re, (m) => { const r = fn(d, m); return r === null ? m : r; });
   return text;
 }
 const dlg_key = (npc) => (CONTENT.dialogue.PERSONAS[npc.role] ? npc.role : 'survivor');
@@ -13,6 +32,7 @@ function dlg_title(game, npc) { return `${dlg_given(game, npc)}, ${CONTENT.dialo
 function dlg_greeting(game, npc) {
   const p = dlg_persona(npc), pl = game.player, n = npc.chats || 0;
   npc.chats = n + 1;
+  if (game.saga && npc.faction) saga_meet(game, npc.faction);            // now you know they exist
   let line;
   if (pl.infected) line = p.sick;
   else if (pl.hp < pl.max_hp * 0.5) line = p.hurt;
@@ -61,5 +81,8 @@ function dlg_news(game, npc) {
   const facts = dlg_facts(game).concat(CONTENT.dialogue.RUMOURS[dlg_key(npc)]);
   const line = facts[(npc.uid + (npc.heard || 0)) % facts.length];
   npc.heard = (npc.heard || 0) + 1;
+  const told = game._told && game._told[line];                         // what they tell you, you now know
+  if (told) { game.pois[told[0]].revealed = true; saga_meet(game, told[1]); }
+  if (game.saga && npc.faction) saga_meet(game, npc.faction);
   return dlg_era(game, line);
 }

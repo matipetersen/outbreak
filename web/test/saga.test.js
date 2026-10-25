@@ -36,7 +36,7 @@ const stash = (g, lv, id, qty) => lv.stash.push(OB.make_item(id, qty));
   assert(OB.saga_special_boost(w) > OB.saga_special_boost(world()), 'more of the strange ones later on');
 }
 { // a month of the city on its own: factions move, fight and fall, and it gets written down
-  const g = world(5);
+  const g = world(5); g.saga.built.push('radio');                          // a radio hears the whole city
   for (let d = 2; d <= 32; d++) { day(g, d); OB.saga_daily(g); OB.saga_events_tick(g); }
   assert(g.saga.log.length > 10);
   assert(g.saga.log.some((l) => /moved into|fought|took|fallen/.test(l[1])), 'nothing happened in a month');
@@ -220,7 +220,7 @@ const stash = (g, lv, id, qty) => lv.stash.push(OB.make_item(id, qty));
   assert(lv);
 }
 { // forty days of the whole thing running, quietly
-  const g = world(9), p = g.player, t0 = Date.now();
+  const g = world(9), p = g.player, t0 = Date.now(); g.saga.built.push('radio');
   for (let i = 0; i < 240 * 40; i++) {
     if (i % 25 === 0) { for (const a of g.level.actors.slice()) if (a.kind === 'zombie' || (a.kind === 'human' && a.hostile)) g.level.remove_actor(a); g.hordes.length = Math.min(g.hordes.length, 4); }
     g.pending_event = null; p.hp = p.max_hp; p.infected = false; p.bleeding = 0;

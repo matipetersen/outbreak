@@ -112,7 +112,8 @@ function deserialize_game(json) {
   g.riding = d.riding || null; g.mount_uid = d.mount_uid || 0; g._ride_step = d.ride_step || 0;
   g.front = d.front || null; g.saga = d.saga || null; g.win_kind = d.win_kind || '';
   if (g.scenario.front && !g.front && !g.over) { g.deadline_days = 0; front_setup(g); }                 // a Dash saved before the tide
-  if (g.scenario.escalates && !g.saga && !g.over) saga_setup(g);                                           // an endless world saved before it had factions
+  if (g.scenario.escalates && !g.saga && !g.over) saga_setup(g);
+  if (g.saga) for (const e of g.saga.events) if (e.known === undefined) e.known = true;     // saved before news needed a source                                           // an endless world saved before it had factions
   g.update_fov();
   return g;
 }

@@ -481,7 +481,7 @@ function updateHud() {
   if (g.final) add(g.final.exit ? `GET OUT: ${g.final.exit_name}` : `HOLD OUT ${g.final.turns_left}`, 'danger');
   if (g.ring && g.ring.active && !g.front) add('Tide closing', 'warn');
   if (g.front) { const gap = front_gap(g); add(front_status(g), g.front.depart || gap < 6 ? 'danger' : gap < 20 ? 'warn' : 'info'); }
-  if (g.saga) { const e = g.saga.events.find((x) => x.started), ch = el('button', 'chip ' + (e ? 'warn' : 'info'), e ? SAGA_EVENTS[e.id].name : saga_phase(g).name); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openSaga(); }); chips.append(ch); }
+  if (g.saga) { const e = g.saga.events.find((x) => x.started && x.known !== false), ch = el('button', 'chip ' + (e ? 'warn' : 'info'), e ? SAGA_EVENTS[e.id].name : saga_phase(g).name); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openSaga(); }); chips.append(ch); }
   const objs = g.objectives(), next = objs.find((o) => !o[1]) || objs[objs.length - 1];
   $('#goal').innerHTML = ''; $('#goal').append(el('b', null, 'Goal '), next ? next[0] : '', '');
   layoutOverlays();
@@ -1044,7 +1044,7 @@ function openSaga() {
     b.append(el('h3', 'sec', P.name), el('p', 'event-text', P.blurb));
     const next = SAGA_PHASES[saga_phase_index(g) + 1];
     if (next) b.append(el('p', 'note', `${next.name} from day ${next.from}.`));
-    const live = S.events.filter((e) => e.started), coming = S.events.filter((e) => !e.started);
+    const live = S.events.filter((e) => e.started && e.known !== false), coming = S.events.filter((e) => !e.started && e.known !== false);
     if (live.length || coming.length) {
       b.append(el('h3', 'sec', 'Happening'));
       for (const e of live) b.append(el('div', 'row', [el('div', 'badge', '!'), el('div', 'main', el('div', 'name', SAGA_EVENTS[e.id].name))]));

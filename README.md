@@ -61,6 +61,14 @@ is created and fires once when you get close. Choices cost items, health, humani
 All three end with a hold-out finale. Who shows up depends on your **humanity**: the Alpha if you stayed human,
 armed people who have heard about you if you did not.
 
+**News needs a source (web only).** In endless you only hear about what your character could know: places you have seen,
+been told of by someone (what an NPC tells you goes on your map), or that are close enough to hear (25 tiles); factions only
+once you have seen one of their buildings or talked to one of them. A radio (the base project) hears the whole city.
+Public broadcasts (a supply drop, a firebreak warning, the blood moon, the weather) still reach everyone. What happens at
+your base while you are away (the morning report, a raid) is told when you walk back in. And people speak of time by the
+calendar: lines written for weeks into the collapse ("they stripped us of rank on day three", "a radio that stopped talking
+weeks ago") follow the game day until enough time has passed.
+
 **Horses (web only).** Small herds of wild horses (striders on the station) graze on open ground away from the city:
 about one chunk in three that has some, never in the woods or within 25 tiles of the start. They notice you from 6 tiles
 (3 creeping) and bolt like deer. Get next to one (tap it or ACT) and offer food: 30%, +20% creeping, +15% with wild greens,

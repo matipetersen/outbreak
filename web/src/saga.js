@@ -99,6 +99,28 @@ function saga_tick(game) {
   if (t % 5 === 0) saga_flush_queue(game);
 }
 
+// ---- what you can know. Without a radio you hear about a place you have seen or been told of, or something close enough to
+// hear; about a faction once you have seen one of its buildings or talked to one of its people. Public broadcasts (a drop, a
+// firebreak, the weather in the sky) reach everyone. What happens at your base while you are away waits until you get back.
+const SAGA_HEAR_RANGE = 25;
+const saga_radio = (game) => saga_built(game, 'radio');
+function saga_knows_place(game, pid) {
+  if (!pid) return false;
+  const q = game.pois[pid];
+  return saga_radio(game) || q.revealed || q.visited || cheb(poi_pos(q), world_pos(game)) <= SAGA_HEAR_RANGE;
+}
+function saga_knows_faction(game, f) {
+  const S = game.saga;
+  return saga_radio(game) || (S.met || []).includes(f) || Object.values(S.outposts).some((o) => o.owner === f && (game.pois[o.id].revealed || game.pois[o.id].visited));
+}
+function saga_meet(game, f) { const S = game.saga; if (S && f && SAGA_FACTIONS.includes(f)) { S.met = S.met || []; if (!S.met.includes(f)) S.met.push(f); } }
+// Something happened at your base: you hear it now if you are there (or it can radio you), otherwise when you get back.
+function saga_base_msg(game, text, tag) {
+  const S = game.saga;
+  if (in_base(game) || saga_radio(game)) { game.msg(text, tag, true); return; }
+  (S.base_news = S.base_news || []).push([game_day(game), text, tag]);
+}
+
 function saga_note(game, text, poi_id = null) {
   const S = game.saga;
   S.log.push([game_day(game), text]);
@@ -125,8 +147,8 @@ function saga_daily(game) {
     S.refugees_at = t + 240 * 3;
     saga_refugees(game);
   }
-  const radio = saga_built(game, 'radio'), here = world_pos(game), heard = report.filter(([, pid]) => radio || !pid || game.pois[pid].revealed || cheb(poi_pos(game.pois[pid]), here) <= 90);
-  for (const [text, pid] of report) saga_note(game, text, pid);
+  const heard = report.filter(([, pid]) => (pid ? saga_knows_place(game, pid) : saga_radio(game)));
+  for (const [text, pid] of heard) saga_note(game, text, pid);
   if (heard.length) {
     game.msg(`News from the city: ${heard[0][0]}` + (heard.length > 1 ? ` (and ${heard.length - 1} more: The world, in the menu)` : ''), 'dir', true);
     for (const [text] of heard.slice(1, 4)) game.msg(text, 'lore');
@@ -141,9 +163,10 @@ function saga_desertion(game) {
   S.factions.raiders.str = Math.min(100, S.factions.raiders.str + 15);
   const lost = mil.slice(0, Math.ceil(mil.length / 2));
   for (const o of lost) { o.owner = 'raiders'; o.admitted = false; o.hostile = false; o.cleared = 'raiders'; }
-  const names = lost.map((o) => game.pois[o.id].name).join(', ');
+  if (!saga_knows_faction(game, 'military')) return;                    // you never met them: you do not hear them fall apart
+  const names = lost.filter((o) => saga_knows_place(game, o.id)).map((o) => game.pois[o.id].name).join(', ');
   game.msg(`${faction_name(game, 'military')} are coming apart. Deserters keep their rifles and call themselves something else now` + (names ? `: ${names} belong to raiders.` : '.'), 'bad', true);
-  saga_note(game, `Desertion: ${faction_name(game, 'military')} lost ${lost.length} outpost${lost.length === 1 ? '' : 's'} to their own deserters.`);
+  saga_note(game, `Desertion: ${faction_name(game, 'military')} are losing their own people.`);
 }
 
 // ---- sieges: the dead at the door of someone else's outpost, and a call for help
@@ -162,9 +185,9 @@ function saga_sieges_daily(game, report) {
   if (!pool.length) return;
   const o = rng.choice(pool), poi = game.pois[o.id], [px, py] = world_pos(game);
   o.siege_until = t + 480; o.siege_spawned = false;
-  if (saga_built(game, 'radio') || cheb(poi_pos(poi), [px, py]) <= 90) {
+  if (saga_radio(game) || ((poi.revealed || poi.visited) && cheb(poi_pos(poi), [px, py]) <= 60) || cheb(poi_pos(poi), [px, py]) <= SAGA_HEAR_RANGE) {
     poi.revealed = true;
-    game.msg(`${cap(game.era.radio)}, a voice you do not know: ${poi.name} is surrounded. ${faction_name(game, o.owner)} are asking anyone who can hear. (${compass(poi.x - px, poi.y - py)}, ${dist_words(game.era.id, cheb(poi_pos(poi), [px, py]))})`, 'obj', true);
+    game.msg(`${saga_radio(game) ? 'On your radio' : 'Gunfire, and someone shouting'}: ${poi.name} is surrounded. ${faction_name(game, o.owner)} are asking anyone who can hear. (${compass(poi.x - px, poi.y - py)}, ${dist_words(game.era.id, cheb(poi_pos(poi), [px, py]))})`, 'obj', true);
   }
 }
 
@@ -342,15 +365,16 @@ const SAGA_EVENTS = {
       const pool = Object.values(game.saga.outposts).filter((o) => ['enclave', 'science', 'cult'].includes(o.owner) && o.garrison >= 2 && !o.sick_until);
       return pool.length ? { id: game.rng.choice(pool).id } : null;
     },
+    knows: (game, e) => saga_knows_place(game, e.data.id),
     warn_text: (game, e) => `Word from ${game.pois[e.data.id].name}: a fever, and not the bite. They are asking for medicine.`,
-    start(game, e) { const o = game.saga.outposts[e.data.id]; o.sick_until = game.clock.turn + 240 * 3; game.pois[e.data.id].revealed = true; },
+    start(game, e) { const o = game.saga.outposts[e.data.id]; o.sick_until = game.clock.turn + 240 * 3; if (e.known) game.pois[e.data.id].revealed = true; },
     end(game, e) {
       const o = game.saga.outposts[e.data.id];
       if (!o.sick_until) return;
       o.sick_until = 0; o.garrison -= 2;
       const report = [];
       if (o.garrison <= 0) outpost_fall(game, o, null, report);
-      game.msg(report.length ? `The fever burned through ${game.pois[o.id].name}, and the sick did not stay dead.` : `The fever at ${game.pois[o.id].name} has run its course. Not everyone is left.`, 'warn', true);
+      if (e.known || saga_knows_place(game, o.id)) game.msg(report.length ? `The fever burned through ${game.pois[o.id].name}, and the sick did not stay dead.` : `The fever at ${game.pois[o.id].name} has run its course. Not everyone is left.`, 'warn', true);
     },
     marker: (game, e) => (e.started && game.saga.outposts[e.data.id].sick_until ? [game.pois[e.data.id].x, game.pois[e.data.id].y, '#6a9a32', '+'] : null),
   },
@@ -364,7 +388,9 @@ const SAGA_EVENTS = {
       const [a, b] = game.rng.choice(pairs);
       return { a, b };
     },
+    knows: (game, e) => saga_knows_faction(game, e.data.a) && saga_knows_faction(game, e.data.b),
     start(game, e) {
+      if (!e.known) return;                                              // a war between people you have never met is just distant gunfire
       const a = faction_name(game, e.data.a), b = faction_name(game, e.data.b);
       game.msg(`${a} and ${b} are at war. Bodies in the streets between their buildings, and no one picking them up.`, 'bad', true);
       saga_queue(game, { kind: 'war', title: 'War', a: e.data.a, b: e.data.b,
@@ -373,6 +399,7 @@ const SAGA_EVENTS = {
     },
     end(game, e) {
       const S = game.saga, [w, l] = S.factions[e.data.a].str >= S.factions[e.data.b].str ? [e.data.a, e.data.b] : [e.data.b, e.data.a];
+      if (!e.known) return;
       game.msg(`The war is over, for now. ${faction_name(game, w)} came out of it stronger than ${faction_name(game, l)}.`, 'info', true);
       saga_note(game, `The war ended: ${faction_name(game, w)} over ${faction_name(game, l)}.`);
     },
@@ -384,7 +411,9 @@ const SAGA_EVENTS = {
       const pool = Object.values(game.saga.outposts).filter((o) => (o.owner === 'enclave' || o.owner === 'science') && o.garrison > 0);
       return pool.length ? { target: game.rng.choice(pool).id, met: false, stopped: false } : null;
     },
+    knows: (game, e) => saga_knows_place(game, e.data.target) && saga_knows_faction(game, 'cult'),
     start(game, e) {
+      if (!e.known) return;                                              // you find out if you are there when they arrive
       const poi = game.pois[e.data.target], [px, py] = world_pos(game);
       poi.revealed = true;
       game.msg(`${faction_name(game, 'cult')} are walking to ${poi.name}, singing, to open its doors to the dead. (${compass(poi.x - px, poi.y - py)}, ${dist_words(game.era.id, cheb(poi_pos(poi), [px, py]))})`, 'obj', true);
@@ -392,7 +421,7 @@ const SAGA_EVENTS = {
     tick(game, e) {
       const poi = game.pois[e.data.target];
       if (e.data.met || game.level !== game.world.level || cheb(poi_pos(poi), apos(game.player)) > 12) return;
-      e.data.met = true;
+      e.data.met = true; e.known = true; saga_meet(game, 'cult');
       saga_queue(game, { kind: 'procession', title: 'The procession', target: e.data.target,
         text: `The ${faction_name(game, 'cult')} come up the road towards ${poi.name} in a long line, singing, carrying the keys. Behind them, at a distance, the dead follow the singing.`,
         choices: [{ label: 'Stand in their way', needs: {} }, { label: 'Let them pass', needs: {} }] });
@@ -402,9 +431,9 @@ const SAGA_EVENTS = {
       if (e.data.stopped || !o.owner) return;
       const report = [];
       o.garrison = 0; outpost_fall(game, o, null, report);
-      game.msg(`The doors of ${game.pois[o.id].name} were opened from the inside. The singing stopped soon after.`, 'bad', true);
+      if (e.known || saga_knows_place(game, o.id)) game.msg(`The doors of ${game.pois[o.id].name} were opened from the inside. The singing stopped soon after.`, 'bad', true);
     },
-    marker: (game, e) => (e.started && !e.data.stopped ? [game.pois[e.data.target].x, game.pois[e.data.target].y, '#b87ad0', '!'] : null),
+    marker: (game, e) => (e.started && e.known && !e.data.stopped ? [game.pois[e.data.target].x, game.pois[e.data.target].y, '#b87ad0', '!'] : null),
   },
   warlord: {
     name: 'The warlord', days: 999, warn: 0,
@@ -420,12 +449,13 @@ const SAGA_EVENTS = {
       o.warlord = true; o.garrison = Math.max(o.garrison, 5);
       S.warlord = { name: e.data.name, seat: e.data.seat, spawned: false, dead: false, fled: false };
       S.factions.raiders.str = Math.min(100, S.factions.raiders.str + 30);
-      game.pois[o.id].revealed = true;
-      game.msg(`The raiders have a warlord now: ${e.data.name}, holding court at ${game.pois[o.id].name}. The camps answer to one voice, and it wants the city.`, 'bad', true);
-      saga_note(game, `${e.data.name} united the raiders, from ${game.pois[o.id].name}.`);
+      if (!e.known) return;                                              // you will hear the name soon enough: on the road, or from the people you meet
+      game.msg(`The raiders have a warlord now: ${e.data.name}` + (saga_knows_place(game, o.id) ? `, holding court at ${game.pois[o.id].name}` : '') + '. The camps answer to one voice, and it wants the city.', 'bad', true);
+      saga_note(game, `${e.data.name} united the raiders.`);
     },
+    knows: (game) => saga_knows_faction(game, 'raiders'),
     tick(game, e) { const W = game.saga.warlord; if (W && (W.dead || W.fled)) e.until = game.clock.turn; },
-    marker: (game, e) => { const W = game.saga.warlord; return e.started && W && !W.dead ? [game.pois[W.seat].x, game.pois[W.seat].y, '#e2573f', 'K'] : null; },
+    marker: (game, e) => { const W = game.saga.warlord; return e.started && W && !W.dead && saga_knows_place(game, W.seat) ? [game.pois[W.seat].x, game.pois[W.seat].y, '#e2573f', 'K'] : null; },
   },
   famine: {
     name: 'Famine', days: 3, warn: 60, mods: { price: 1.6, forage: 0.6, food_need: 2 },
@@ -472,8 +502,10 @@ function saga_schedule(game) {
     let at = t + warn;
     if (def.at_hour !== undefined) { const day0 = Math.floor(t / 240) * 240; at = day0 + def.at_hour * 10; if (at < t + warn) at += 240; }
     const e = { id, at, until: at + Math.round(def.days * 240), data, started: false };
+    e.known = !def.knows || saga_radio(game) || def.knows(game, e);
     S.events.push(e);
     if (SAGA_UNIQUE.includes(id)) S.done.push(id);
+    if (!e.known) break;
     if (def.warn_text && warn) game.msg(def.warn_text(game, e), 'obj', true);
     saga_note(game, `${def.name}` + (warn ? ' (announced)' : ''));
     break;
@@ -485,7 +517,7 @@ function saga_events_tick(game) {
   const S = game.saga, t = game.clock.turn;
   for (const e of S.events.slice()) {
     const def = SAGA_EVENTS[e.id];
-    if (!e.started && t >= e.at) { e.started = true; if (def.start) def.start(game, e); }
+    if (!e.started && t >= e.at) { e.started = true; e.known = e.known || !def.knows || saga_radio(game) || def.knows(game, e); if (def.start) def.start(game, e); }
     if (e.started && def.tick) def.tick(game, e);
     if (e.started && t >= e.until) { S.events.splice(S.events.indexOf(e), 1); if (def.end) def.end(game, e); }
   }
@@ -503,6 +535,7 @@ function saga_warlord_check(game) {
   game.player.gain_xp(120);
   const o = S.outposts[W.seat];
   if (o) o.warlord = false;
+  game.pois[W.seat].revealed = true;
   game.msg(`${W.name} is dead. Without the warlord the camps will be at each other's throats by morning.`, 'good', true);
   saga_note(game, `${W.name}, the warlord, is dead.`);
 }
@@ -529,6 +562,14 @@ function saga_on_level_created(game, lv, poi) {
 function saga_on_enter(game, lv) {
   if (!game.saga) return;
   outpost_on_enter(game, lv);
+  const o = outpost_of_level(game, lv);
+  if (o && o.owner) saga_meet(game, o.owner);
+  const S = game.saga;
+  if (lv.id === game.base_id && S.base_news && S.base_news.length) {          // what happened here while you were gone
+    game.msg('While you were away:', 'dir', true);
+    for (const [day, text, tag] of S.base_news.slice(-6)) game.msg(`(Day ${day}) ${text}`, tag, true);
+    S.base_news = [];
+  }
 }
 
 // ---- choices the world puts to you, shown when nothing is hunting you
@@ -727,8 +768,8 @@ function saga_morning(game) {
     S.residents.splice(S.residents.indexOf(r), 1);
     lines.push(`${r.name} left in the night` + (it ? `, and took the ${game.item_def(it.id).name.toLowerCase()} with them.` : '.'));
   }
-  game.msg(`Morning at the base. ${S.residents.length} ${S.residents.length === 1 ? 'person' : 'people'}, ${fed} portion${fed === 1 ? '' : 's'} eaten.` + (lines.length ? ' ' + lines[0] : ''), 'dir', true);
-  for (const l of lines.slice(1)) game.msg(l, 'lore');
+  saga_base_msg(game, `Morning at the base. ${S.residents.length} ${S.residents.length === 1 ? 'person' : 'people'}, ${fed} portion${fed === 1 ? '' : 's'} eaten.` + (lines.length ? ' ' + lines[0] : ''), 'dir', true);
+  for (const l of lines.slice(1)) saga_base_msg(game, l, 'lore');
 }
 
 function saga_lose_resident(game, r, why) {
@@ -749,7 +790,7 @@ function saga_night_raid(game) {
   const defense = guards.reduce((s, r) => s + (['fighter', 'tough'].includes(saga_strength(r)) ? 3.5 : 2.5), 0) +
     Object.values(lv.built).filter((v) => v === 'barricade').length * 0.5 + (saga_built(game, 'wall') ? 3 : 0) + (saga_built(game, 'watchtower') ? 2 : 0) + (saga_built(game, 'generator') ? 1 : 0);
   if (defense >= threat) {
-    if (guards.length) { for (const r of guards) r.morale = Math.min(100, r.morale + 3); game.msg(`The dead came for the base in the night. ${guards.map((r) => r.name).join(' and ')} held the walls.`, 'good', true); }
+    if (guards.length) { for (const r of guards) r.morale = Math.min(100, r.morale + 3); saga_base_msg(game, `The dead came for the base in the night. ${guards.map((r) => r.name).join(' and ')} held the walls.`, 'good'); }
     return;
   }
   const short = Math.ceil(threat - defense), lost = [];
@@ -757,7 +798,7 @@ function saga_night_raid(game) {
   const victims = S.residents.filter(() => rng.random() < 0.25);
   for (const r of victims) { if (rng.random() < 0.4 + 0.1 * ph) saga_lose_resident(game, r, 'died defending the base'); else { r.hurt = 3; if (rng.random() < game.profile.infect * 1.5) resident_bitten(game, r); } }
   for (const r of S.residents) r.morale = Math.max(0, r.morale - 10);
-  game.msg('While you were away, the dead broke into the base.' + (lost.length ? ` The ${lost.slice(0, 3).join(', ')} ${lost.length > 3 ? 'and more are' : lost.length > 1 ? 'are' : 'is'} gone.` : '') +
+  saga_base_msg(game, 'The dead broke into the base.' + (lost.length ? ` The ${lost.slice(0, 3).join(', ')} ${lost.length > 3 ? 'and more are' : lost.length > 1 ? 'are' : 'is'} gone.` : '') +
     (victims.length ? ` ${victims.map((r) => r.name).join(' and ')} ${victims.length > 1 ? 'were' : 'was'} caught in it.` : '') + (S.residents.length ? '' : ' There was nobody there to stop them.'), 'bad', true);
 }
 
@@ -898,7 +939,7 @@ function saga_markers(game) {
   const S = game.saga, out = [];
   if (!S) return out;
   for (const o of Object.values(S.outposts)) if (o.siege_until && game.pois[o.id].revealed) out.push([game.pois[o.id].x, game.pois[o.id].y, '#e2573f', 'S']);
-  for (const e of S.events) { const m = SAGA_EVENTS[e.id].marker && SAGA_EVENTS[e.id].marker(game, e); if (m) out.push(m); }
+  for (const e of S.events) { if (e.known === false) continue; const m = SAGA_EVENTS[e.id].marker && SAGA_EVENTS[e.id].marker(game, e); if (m) out.push(m); }
   return out;
 }
 
@@ -910,10 +951,11 @@ function saga_news(game) {
     if (!o.owner) continue;
     const poi = game.pois[o.id];
     if (cheb(poi_pos(poi), [px, py]) > 70) continue;
-    out.push(`"${faction_name(game, o.owner)} hold ${poi.name}, ${compass(poi.x - px, poi.y - py)} of here. ${({ ally: 'They speak well of you there.', friendly: 'They would let you in.', wary: 'They do not know you yet.', hostile: 'They will shoot you on sight.' })[faction_attitude(game, o.owner)]}"`);
+    const line = `"${faction_name(game, o.owner)} hold ${poi.name}, ${compass(poi.x - px, poi.y - py)} of here. ${({ ally: 'They speak well of you there.', friendly: 'They would let you in.', wary: 'They do not know you yet.', hostile: 'They will shoot you on sight.' })[faction_attitude(game, o.owner)]}"`;
+    out.push(line); game._told = game._told || {}; game._told[line] = [o.id, o.owner];
   }
   if (S.warlord && !S.warlord.dead) out.push(`"${S.warlord.name} runs the raiders now. Every camp answers to that name."`);
-  const e = S.events.find((ev) => ev.started);
+  const e = S.events.find((ev) => ev.started && ev.known);
   if (e) out.push(`"${SAGA_EVENTS[e.id].name}. You have seen it too. Nobody knows how long it lasts."`);
   return out;
 }
