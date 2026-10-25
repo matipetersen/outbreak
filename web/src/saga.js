@@ -638,7 +638,8 @@ function saga_station(game, c) {
   game.level.remove_actor(c); game.world.level.remove_actor(c);
   c.state = 'resident';
   game.companion_uid = 0;
-  saga_add_resident(game, c, c.faction);
+  const r = saga_add_resident(game, c, c.faction);
+  if (c.infected) { r.bitten = game_day(game); c.infected = false; }      // the fever comes with them
   return `${c.name} puts down their pack. "I will keep the place standing for you."`;
 }
 function saga_take_along(game, r) {
@@ -649,6 +650,7 @@ function saga_take_along(game, r) {
   let h = r.actor;
   if (!h) { h = comp_stranger(game, spot); h.faction = r.faction; comp_ensure_person(game, h, r.arch); h.name = r.name; h.glyph = r.name[0].toUpperCase(); }
   h.x = spot[0]; h.y = spot[1]; h.hp = Math.max(1, h.hp); lv.add_actor(h);
+  if (r.bitten) { h.infected = true; h.infection_timer = Math.max(10, Math.floor(game.profile.incubation * game.diff.timer / 2)); h.bite_window = 0; h.bite_limb = 'torso'; }
   game.saga.residents.splice(game.saga.residents.indexOf(r), 1);
   saga_recruit_here(game, h, Math.max(20, h.bond || 0));
   return `${r.name} picks up a pack and falls in beside you.`;
@@ -684,6 +686,7 @@ function saga_morning(game) {
   const calm = S.residents.some((r) => saga_strength(r) === 'calm' && !r.hurt);
   const infirmary = saga_built(game, 'infirmary'), medics = S.residents.filter((r) => r.job === 'medic' && !r.hurt);
   for (const r of S.residents.slice()) {
+    if (!S.residents.includes(r) || resident_fever(game, r, lines)) continue;
     if (r.hurt > 0) { r.hurt -= 1 + (infirmary ? 1 : 0) + (medics.length ? 1 : 0); if (r.hurt <= 0) { r.hurt = 0; lines.push(`${r.name} is back on their feet.`); } r.morale -= 2; continue; }
     const s = saga_strength(r);
     if (r.job === 'scavenge') {
@@ -692,7 +695,7 @@ function saga_morning(game) {
       const die = 0.02 + 0.012 * ph - (s === 'scout' ? 0.01 : 0), hurt = 0.08 + 0.03 * ph - (s === 'scout' ? 0.05 : 0), roll = rng.random();
       if (!q) lines.push(`${r.name} found nowhere left to search nearby.`);
       else if (roll < die) { saga_lose_resident(game, r, `did not come back from ${q.name}`); lines.push(`${r.name} went to ${q.name} and did not come back.`); continue; }
-      else if (roll < die + hurt) { r.hurt = 2; lines.push(`${r.name} came back from ${q.name} hurt, with nothing.`); }
+      else if (roll < die + hurt) { r.hurt = 2; const bit = rng.random() < 0.25; if (bit) resident_bitten(game, r); lines.push(`${r.name} came back from ${q.name} hurt, with nothing` + (bit ? ', and with a bite they tried to hide.' : '.')); }
       else {
         const got = roll_items(rng, game.era, q.burned ? 'house' : q.kind, 1.4 + (s === 'scavenger' || s === 'lucky' ? 1 : 0), game.diff.loot * (0.5 + saga_mod(game, 'restock')));
         for (const it of got) _stash_add(game, lv, it);
@@ -752,7 +755,7 @@ function saga_night_raid(game) {
   const short = Math.ceil(threat - defense), lost = [];
   for (let i = 0; i < short && lv.stash.length; i++) { const it = lv.stash[rng.randint(0, lv.stash.length - 1)]; lost.push(game.item_def(it.id).name.toLowerCase()); _stash_take(lv, it, it.qty); }
   const victims = S.residents.filter(() => rng.random() < 0.25);
-  for (const r of victims) { if (rng.random() < 0.4 + 0.1 * ph) saga_lose_resident(game, r, 'died defending the base'); else r.hurt = 3; }
+  for (const r of victims) { if (rng.random() < 0.4 + 0.1 * ph) saga_lose_resident(game, r, 'died defending the base'); else { r.hurt = 3; if (rng.random() < game.profile.infect * 1.5) resident_bitten(game, r); } }
   for (const r of S.residents) r.morale = Math.max(0, r.morale - 10);
   game.msg('While you were away, the dead broke into the base.' + (lost.length ? ` The ${lost.slice(0, 3).join(', ')} ${lost.length > 3 ? 'and more are' : lost.length > 1 ? 'are' : 'is'} gone.` : '') +
     (victims.length ? ` ${victims.map((r) => r.name).join(' and ')} ${victims.length > 1 ? 'were' : 'was'} caught in it.` : '') + (S.residents.length ? '' : ' There was nobody there to stop them.'), 'bad', true);

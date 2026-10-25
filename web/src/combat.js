@@ -379,6 +379,7 @@ function attack_actor(game, attacker, defender, ranged = false) {
     return;
   }
   if (defender.hp <= 0) { kill_human_other(game, defender, attacker); return; }
+  if (defender.kind === 'human' && attacker.kind === 'zombie') npc_bitten(game, attacker, defender);
   if (defender.kind === 'human') {
     if (defender.state !== 'follow' && defender.state !== 'wait') { defender.state = 'hunt'; defender.target = apos(attacker); }
     _distress(game, defender);
@@ -400,6 +401,7 @@ function _distress(game, h) {
 // A human dies to something other than the player. Victims of the dead rise again (corpse flag 2).
 function kill_human_other(game, h, killer) {
   raiders_shaken(game, h);
+  { const o = h.outpost && game.saga && game.saga.outposts[h.outpost]; if (o && o.owner === h.faction) o.garrison = Math.max(0, o.garrison - 1); }      // a dead guard is one fewer
   comp_on_death(game, h, killer);
   const level = game.level;
   grant_xp(game, killer, 12);

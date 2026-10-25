@@ -289,6 +289,7 @@ class Game {
     this.pings = this.pings.filter((q) => t - q.turn <= 6);
     if (t % 5 === 0) mutation_crossing(this);
     this._time_events(); weather_tick(this); world_tick(this); this._base_tick(); military_tick(this); comp_tick(this); objective_watch(this); dir_tick(this); pets_tick(this); memory_tick(this);
+    contagion_tick(this);
     front_tick(this); if (this.over) return;
     saga_tick(this); if (this.over) return;
     if (this.incidents.length && t % 5 === 0) this._check_incidents();

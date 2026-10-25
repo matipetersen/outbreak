@@ -454,7 +454,7 @@ function updateHud() {
   const chips = $('#chips'); chips.innerHTML = '';
   const add = (t, cls) => chips.append(el('span', 'chip ' + (cls || ''), t));
   { const pt = pets_current(g); if (pt) { const ch = el('button', 'chip ally', `${pt.name} ${pt.hp}/${pt.max_hp}${pets_hunger(g, pt) !== 'fed' ? ' · ' + pets_hunger(g, pt) : ''}`); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openPet(pt); }); chips.append(ch); } }
-  { const ally = comp_current(g); if (ally) { const ch = el('button', 'chip ally', `${ally.name} ${ally.hp}/${ally.max_hp}${ally.state === 'wait' ? ' · waiting' : ''}`); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openCompanion(ally); }); chips.append(ch); const oc = el('button', 'chip ally', comp_order_of(ally) ? `Order: ${COMP_ORDERS[ally.order][0]}` : 'Orders'); oc.type = 'button'; oc.addEventListener('click', () => { if (!modal && game && !game.over) openOrders(); }); chips.append(oc); } else if (g.fallen_allies.length) add(`Alone · lost ${g.fallen_allies[g.fallen_allies.length - 1][0]}`, 'info'); }
+  { const ally = comp_current(g); if (ally) { const ch = el('button', 'chip ally', `${ally.name} ${ally.hp}/${ally.max_hp}${ally.infected ? ' · bitten' : ''}${ally.state === 'wait' ? ' · waiting' : ''}`); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openCompanion(ally); }); chips.append(ch); const oc = el('button', 'chip ally', comp_order_of(ally) ? `Order: ${COMP_ORDERS[ally.order][0]}` : 'Orders'); oc.type = 'button'; oc.addEventListener('click', () => { if (!modal && game && !game.over) openOrders(); }); chips.append(oc); } else if (g.fallen_allies.length) add(`Alone · lost ${g.fallen_allies[g.fallen_allies.length - 1][0]}`, 'info'); }
   if (p.infected) add(`INFECTED ${p.infection_timer >= 20 ? Math.round(p.infection_timer / 10) + 'h' : p.infection_timer + ' turns'}`, 'danger');
   if (p.bleeding) add('Bleeding', 'danger');
   if (p.fracture) add('Broken leg', 'warn');
@@ -932,7 +932,7 @@ function baseSaga(body) {
   if (!S.residents.length) body.append(el('p', 'note', 'Nobody lives here yet. Leave your companion here, bring people from outposts, or take in whoever comes to the door. Each cot you build is room for two more.'));
   for (const r of S.residents) {
     const row = el('div', 'row tap');
-    row.append(el('div', 'badge', r.name[0]), el('div', 'main', [el('div', 'name', `${r.name}, ${saga_label(r)}`), el('div', 'sub', `${SAGA_JOBS[r.job][0]} · morale ${r.morale}` + (r.hurt ? ' · hurt' : '') + (r.faction !== 'enclave' ? ` · from ${faction_name(g, r.faction)}` : ''))]));
+    row.append(el('div', 'badge', r.name[0]), el('div', 'main', [el('div', 'name', `${r.name}, ${saga_label(r)}`), el('div', 'sub', `${SAGA_JOBS[r.job][0]} · morale ${r.morale}` + (r.bitten ? ' · BITTEN' : r.hurt ? ' · hurt' : '') + (r.faction !== 'enclave' ? ` · from ${faction_name(g, r.faction)}` : ''))]));
     row.addEventListener('click', () => openResident(r));
     body.append(row);
   }
@@ -969,6 +969,14 @@ function openResident(r, line = '') {
     const a = COMP_BY_ID[r.arch];
     b.append(el('p', 'event-text', `${r.name}, ${saga_label(r)}. Morale ${r.morale}/100${r.hurt ? ', hurt' : ''}. With you since day ${r.joined}.` + (a ? ` Good at it: ${COMP.strengths[a.strength]}.` : '')));
     if (line) b.append(el('p', 'note say t-ally', line));
+    if (r.bitten) {
+      const late = game_day(g) - r.bitten >= 1;
+      b.append(el('p', 'event-text t-bad', late ? 'Bitten, and the fever has started. By tomorrow morning they will turn.' : 'Bitten. The fever has not started yet: a blade could still save them.'));
+      const row = el('div', 'actionrow');
+      if (!late) row.append(btn('btn danger', 'Cut it off', () => { const l = resident_cut(g, r); refresh(); openResident(r, l); }));
+      row.append(btn('btn danger', 'Let them go', () => { const l = resident_mercy(g, r); refresh(); openBase(); toast(l); }));
+      b.append(row);
+    }
     b.append(el('h3', 'sec', 'Their work'));
     for (const [id, [name, desc]] of Object.entries(SAGA_JOBS)) {
       const need = SAGA_JOB_NEEDS[id], off = need && !saga_built(g, need);
@@ -1206,6 +1214,7 @@ function openHelp() {
     li('Vaults', 'Components lie in locked vaults on the lowest floor. Use the code, or force the door (loud).');
     li('Long press', 'Hold on a tile to see what it is. Pinch to zoom.');
     li('Humanity', 'Your choices on the road decide who trades with you and who you face at the end.');
+    li('Bites are for everyone', 'The dead infect the living around you by the same rule as you: your companion, soldiers, guards, raiders. A bitten person turns into one of the dead when the fever runs out. For your companion (talk to them): cut off a bitten arm or leg in time with a blade, slow it with a suppressant, or let them go before it happens. People at your base can be bitten in a raid: you have until the morning after.');
     li('Crafting weapons', 'Menu > Craft. Weapons (nail club, blade, spear, pike, bows), arrows and shields are known from the start and can be made anywhere from wood, scrap and cloth. Beside a workshop (build one in your base) it is faster and sturdier: away from one a weapon or shield comes out at 60% condition and you get one arrow fewer.');
     li('Shields', 'Equip one from the pack: it goes in your off hand and blocks about a fifth (plank) or a third (reinforced) of the blows that land, losing condition each time. It does nothing while you hold a bow, a polearm or a long gun.');
     li('Dash: the tide', 'No calendar: a tide of the dead rolls up the road behind you, a little slower than a walk. Searching buildings, sleeping and detours all cost ground. The chip shows how far behind it is; if it reaches you the dead come from everywhere, and if it gets far past you it is over. Near the way out the transport starts loading: reach its doors in time.');
@@ -1340,6 +1349,14 @@ function openCompanion(c, line = '') {
     b.append(el('p', 'event-text', `${c.name}, ${a.label}. ${comp_bond_word(c)}. HP ${c.hp}/${c.max_hp}.`));
     b.append(el('p', 'note', `Good at it: ${COMP.strengths[a.strength]}. Trouble: ${COMP.flaws[a.flaw]}.`));
     if (line) b.append(el('p', 'note say t-ally', line));
+    if (c.infected) {
+      b.append(el('p', 'event-text t-bad', `Bitten (${c.bite_limb}). About ${Math.max(1, Math.round(c.infection_timer / 10))} hours until the fever takes them.` + (c.bite_window > 0 ? ` A limb can still be cut off for ${c.bite_window} turns.` : '')));
+      const cure = el('div', 'actionrow'), say = (l) => { refresh(); if (g.over || !comp_current(g)) { closeSheet(); toast(l); } else openCompanion(c, l); };
+      if (c.bite_window > 0 && c.bite_limb !== 'torso') cure.append(btn('btn danger', `Cut off the ${c.bite_limb}`, () => say(npc_cut(g, c))));
+      cure.append(btn('btn', 'Give a suppressant', () => say(npc_suppress(g, c))));
+      cure.append(btn('btn danger', 'Let them go, before it happens', () => say(npc_mercy(g, c))));
+      b.append(cure);
+    }
     const acts = el('div', 'actionrow');
     acts.append(btn('btn main', 'Talk', () => { const l = comp_talk(g, c); refresh(); openCompanion(c, l); }));
     acts.append(btn('btn', 'What next?', () => openCompanion(c, comp_advice(g))));

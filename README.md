@@ -61,6 +61,16 @@ is created and fires once when you get close. Choices cost items, health, humani
 All three end with a hold-out finale. Who shows up depends on your **humanity**: the Alpha if you stayed human,
 armed people who have heard about you if you did not.
 
+**The bite is for everyone (web only).** The dead used to only hurt the living around you. Now a zombie's bite infects
+them by the same rule as you: the strain's chance per bite, less what their armour stops (soldiers 30%, scouts and guards
+15%, raiders 10%, your companion whatever you gave them to wear), a fever on the strain's own clock, and at the end they
+get up as one of the dead where they stand ("Turned ..."), hunting you. The opening grace still protects your people. Your
+companion tells you when they are bitten, and their sheet offers what you have yourself: cut off a bitten arm or leg in time
+with a blade (they live, weaker, and closer to you), a suppressant to slow it, or letting them go before it happens (they
+do not get up). An outpost guard who dies or turns is one fewer in its garrison. In endless, people at your base can be
+bitten in a raid or on a scavenging run: the fever starts the next morning, and the morning after they turn and hurt (and
+may bite) others, unless you cut it off before the fever or let them go. (`web/src/contagion.js`)
+
 **Crafting weapons, arrows and shields (web only).** Every weapon recipe (nail club, ground blade, reinforced spear, scrap
 bow, the era's own bow and spear where it has them), arrows (the era's arrows or darts, and improvised shafts) and two
 shields are known from the start and can be made anywhere. A workshop no longer gates them: beside one the work takes the
