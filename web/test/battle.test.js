@@ -174,4 +174,23 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   b.turn = 8; const dark = OB.bt_visibility(b).reduce((a, x) => a + x, 0);
   assert(OB.bt_dark(b) && dark < seen, 'night shrinks what you see');
 }
+{ // the player buys the company: within budget, one to five squads, deployed in the order chosen
+  const b = mk({ forces: ['heavy', 'scout', 'scout', 'line'] });
+  assert.deepStrictEqual(b.squads.map((s) => s.type), ['heavy', 'scout', 'scout', 'line']);
+  assert.strictEqual(b.squads.filter((s) => s.lures_left > 0).length, 2);
+  const five = mk({ objective: 'rescue', forces: ['scout', 'scout', 'scout', 'line', 'line'] });
+  assert.strictEqual(five.squads.length, 5);
+  for (const s of five.squads) for (const m of OB.bt_squad_men(five, s)) assert(OB.bt_passable(five, m.x, m.y, 'h'));
+  const solo = mk({ forces: ['shield'] }); assert.strictEqual(solo.squads.length, 1);
+  assert.strictEqual(mk({}).squads.length, 4, 'the standard company when none is chosen');
+  for (const bad of [[], ['heavy', 'heavy', 'heavy', 'heavy'], ['scout', 'scout', 'scout', 'scout', 'scout', 'scout'], ['tank']]) {
+    assert(OB.bt_forces_error(bad), JSON.stringify(bad));
+    assert.throws(() => mk({ forces: bad }));
+  }
+  assert.strictEqual(OB.bt_forces_error(['line', 'shield', 'line', 'heavy']), null);
+  assert(OB.bt_forces_cost(['line', 'shield', 'line', 'heavy']) <= OB.BT_ARMY.budget, 'the standard companies fit the budget');
+  assert(OB.bt_forces_cost(OB.BT_OBJECTIVES.rescue.forces) <= OB.BT_ARMY.budget);
+  const st = memStore(), x = mk({ forces: ['line', 'scout'] }); OB.bt_save(x, st);
+  assert.deepStrictEqual(OB.bt_load(st).cfg.forces, ['line', 'scout'], 'the company is in the save');
+}
 console.log('battle tests passed');

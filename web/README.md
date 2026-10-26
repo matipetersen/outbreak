@@ -61,6 +61,9 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
 * **Objectives**: *Hold the refuge* (ten turns from dusk into the dark; the dead inside wear it down; squads inside at the
   end of a turn restock ammunition) and *Bring them out* (survivors barricaded in a house to the north come out to the
   first squad at their door and follow it; bring at least half to the south edge in ten turns).
+* **Your company** is bought on the setup screen from 13 points, one to five squads: riflemen (or the era's line) 3,
+  shield squad 3, heavy weapon 4, scouts 2. Each objective offers a standard company to start from; the choice is kept for
+  the next battle and stored in the save. The first squads take the posts nearest the danger.
 * **Orders**: tap a squad (or its card), then tap a tile or drag a route; *Fire at will* / *Hold fire*; *Walk* / *Run*
   (nobody shoots while running); one special action: shield squads build a barricade (four quiet seconds, four per
   battle), scouts throw a lure that calls the dead for two turns. Orders carry over between turns.

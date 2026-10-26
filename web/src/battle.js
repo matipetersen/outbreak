@@ -45,6 +45,17 @@ const BT_ERAS = {
   },
 };
 const BT_CALLSIGNS = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo'];
+// The company is bought from a budget: what a squad costs is what it is worth on the field.
+const BT_ARMY = { budget: 13, max: 5, cost: { line: 3, shield: 3, heavy: 4, scout: 2 } };
+const bt_forces_cost = (types) => types.reduce((a, t) => a + (BT_ARMY.cost[t] || 0), 0);
+// Why a company cannot take the field, or null when it can.
+function bt_forces_error(types) {
+  if (!Array.isArray(types) || !types.length) return 'The company needs at least one squad.';
+  if (types.length > BT_ARMY.max) return `At most ${BT_ARMY.max} squads.`;
+  if (types.some((t) => !BT_TYPES[t])) return 'Unknown squad type.';
+  if (bt_forces_cost(types) > BT_ARMY.budget) return `Over budget: ${bt_forces_cost(types)} of ${BT_ARMY.budget} points.`;
+  return null;
+}
 // How many of the dead each preset sends, on top of its horde size: fragile or fast presets need more bodies to threaten a line.
 const BT_PRESET_SCALE = { classic: 1.35, rage: 1.7, swarm: 0.8 };
 
@@ -288,6 +299,7 @@ function bt_new(cfg) {
   if (!CONTENT.presets[cfg.zombies]) throw new Error('unknown zombies ' + cfg.zombies);
   if (!BT_OBJECTIVES[cfg.objective]) throw new Error('unknown objective ' + cfg.objective);
   if (!CONTENT.difficulties[cfg.difficulty]) throw new Error('unknown difficulty ' + cfg.difficulty);
+  if (cfg.forces) { const err = bt_forces_error(cfg.forces); if (err) throw new Error(err); cfg.forces = cfg.forces.slice(); }
   const seed = cfg.seed !== null && cfg.seed !== undefined ? cfg.seed >>> 0 : Math.floor(Math.random() * 1073741824);
   const obj = BT_OBJECTIVES[cfg.objective], prof = CONTENT.presets[cfg.zombies];
   const b = {
@@ -311,16 +323,16 @@ function bt_opening_line(b) {
 }
 
 function bt_deploy(b) {
-  const types = BT_OBJECTIVES[b.objective].forces, era = BT_ERAS[b.era] || BT_ERAS.modern;
+  const types = b.cfg.forces || BT_OBJECTIVES[b.objective].forces, era = BT_ERAS[b.era] || BT_ERAS.modern;
   const names = CONTENT.companions.names.slice();
   for (let i = names.length - 1; i > 0; i--) { const j = Math.floor(bt_rand(b) * (i + 1)); [names[i], names[j]] = [names[j], names[i]]; }
   let ni = 0;
   const spots = [];
   if (b.objective === 'hold') {
     const r = b.refuge, cx = (r.x0 + r.x1 + 1) / 2;
-    spots.push([cx - 4, r.y0 - 3], [cx, r.y0 + 1.5], [cx + 4, r.y0 - 3], [cx, r.y0 - 2]);
+    spots.push([cx - 4, r.y0 - 3], [cx, r.y0 + 1.5], [cx + 4, r.y0 - 3], [cx, r.y0 - 2], [cx - 1.5, r.y0 + 3.5]);
   } else {
-    for (let i = 0; i < types.length; i++) spots.push([4 + i * (b.w - 8) / (types.length - 1), b.h - 3.5]);
+    for (let i = 0; i < types.length; i++) spots.push([types.length > 1 ? 4 + i * (b.w - 8) / (types.length - 1) : b.w / 2, b.h - 3.5]);
   }
   types.forEach((type, i) => {
     const st = bt_type_stats(b.era, type);

@@ -42,10 +42,8 @@ function setup() {
       if (blurb) w.append(el('div', 'blurb', blurb()));
     };
     group('Objective', 'objective', Object.entries(BT_OBJECTIVES).map(([id, o]) => [id, o.name, `${o.turns} turns`]), () => BT_OBJECTIVES[setupCfg.objective].blurb, true);
-    group('When', 'era', Object.values(CONTENT.eras).map((e) => [e.id, `${e.year} · ${(e.name.split(' - ')[1] || e.name)}`, null]), () => {
-      const era = BT_ERAS[setupCfg.era], types = BT_OBJECTIVES[setupCfg.objective].forces;
-      return 'Your company: ' + types.map((t) => `${era.names[t]} (${era.weapons[t]})`).join(', ') + '.';
-    });
+    group('When', 'era', Object.values(CONTENT.eras).map((e) => [e.id, `${e.year} · ${(e.name.split(' - ')[1] || e.name)}`, null]), null);
+    armyBuilder(w, render);
     const pz = CONTENT.presets[setupCfg.zombies];
     group('The dead', 'zombies', Object.values(CONTENT.presets).map((z) => [z.id, z.name.split(' - ')[0], z.inspired_by]), () => pz.blurb + ' ' + bt_preset_note(pz));
     group('Difficulty', 'difficulty', ['easy', 'normal', 'hard'].map((d) => [d, d[0].toUpperCase() + d.slice(1), null]), null, true);
@@ -53,12 +51,45 @@ function setup() {
     const row = el('div', 'seed'), inp = el('input'); inp.type = 'number'; inp.placeholder = 'random'; inp.inputMode = 'numeric'; inp.value = setupCfg.seed === null ? '' : setupCfg.seed;
     inp.addEventListener('input', () => { setupCfg.seed = inp.value === '' ? null : Math.abs(parseInt(inp.value, 10)) % 1073741824; });
     row.append(inp); w.append(row);
-    const go = el('div', 'sticky');
-    go.append(btn('btn main', 'DEPLOY', () => { UI.lsSet('outbreak.battlecfg', Object.assign({}, setupCfg, { seed: null })); start(bt_new(Object.assign({}, setupCfg))); }));
+    const go = el('div', 'sticky'), forces = companyOf(), err = bt_forces_error(forces);
+    const deploy = btn('btn main', err ? err : 'DEPLOY', () => { UI.lsSet('outbreak.battlecfg', Object.assign({}, setupCfg, { seed: null })); start(bt_new(Object.assign({}, setupCfg, { forces }))); });
+    deploy.disabled = !!err;
+    go.append(deploy);
     w.append(go, btn('btn', 'Back', UI.showTitle));
     s.append(w); s.scrollTop = 0;
   };
   render();
+}
+
+// The company: the standard one for the objective until the player changes it, then theirs (kept between battles).
+const ROLE = { line: 'Steady fire at range.', shield: 'Holds a doorway in close combat; builds barricades.', heavy: 'Huge firepower once set up. Loud, and hungry for ammunition.', scout: 'Fast and quiet, sees farther; throws lures.' };
+const companyOf = () => (setupCfg.forces ? setupCfg.forces.slice() : BT_OBJECTIVES[setupCfg.objective].forces.slice());
+function armyBuilder(w, render) {
+  const era = BT_ERAS[setupCfg.era] || BT_ERAS.modern, forces = companyOf(), spent = bt_forces_cost(forces), left = BT_ARMY.budget - spent;
+  const edit = (next) => { setupCfg.forces = next; render(); };
+  w.append(el('h3', null, `Your company · ${spent}/${BT_ARMY.budget} points · ${forces.length}/${BT_ARMY.max} squads`));
+  const list = el('div', 'bt-army');
+  forces.forEach((t, i) => {
+    const st = bt_type_stats(setupCfg.era, t);
+    const row = el('div', 'bt-arow', [el('span', 'bt-dot'), el('div', 'bt-amain', [el('b', null, era.names[t]), el('small', null, `${st.men} men · ${era.weapons[t]}`)]), el('span', 'bt-acost', `${BT_ARMY.cost[t]}`)]);
+    row.querySelector('.bt-dot').style.background = SQUAD_COL[i % SQUAD_COL.length];
+    const x = btn('bt-ax', '×', () => { const n = forces.slice(); n.splice(i, 1); edit(n); });
+    x.setAttribute('aria-label', 'remove ' + era.names[t]); x.disabled = forces.length <= 1;
+    row.append(x); list.append(row);
+  });
+  w.append(list);
+  const add = el('div', 'opts cols');
+  for (const t of Object.keys(BT_TYPES)) {
+    const st = bt_type_stats(setupCfg.era, t), c = BT_ARMY.cost[t];
+    const o = el('button', 'opt', [el('b', null, `+ ${era.names[t]} · ${c}`), el('small', null, `${st.men} men${st.range ? `, range ${st.range}` : ', close combat'}. ${ROLE[t]}`)]); o.type = 'button';
+    o.disabled = c > left || forces.length >= BT_ARMY.max;
+    o.addEventListener('click', () => edit(forces.concat([t])));
+    add.append(o);
+  }
+  w.append(add);
+  const std = btn('btn', 'Standard company', () => edit(null)); std.style.marginTop = '8px'; std.disabled = !setupCfg.forces;
+  w.append(std);
+  w.append(el('div', 'blurb', 'The first squads take the posts nearest the danger. ' + (forces.includes('shield') ? '' : 'Without a shield squad you cannot build barricades. ') + (forces.includes('scout') ? '' : 'Without scouts you have no lures.')));
 }
 
 // What the preset changes on a battlefield, in one line.
