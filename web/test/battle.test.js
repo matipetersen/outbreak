@@ -311,4 +311,39 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   sc.path = [[brush[0], brush[1] - 3]]; sc.still = 0; sc.moving = true;
   assert(!OB.bt_settled(b, sc), 'moving gives them away');
 }
+{ // sneaking: half speed, unseen until close or until it fires
+  const b = mk({});
+  const s = b.squads[0];
+  OB.bt_set(b, s.id, { pace: 'sneak' });
+  const walk = OB.bt_reach(b, Object.assign({}, s, { pace: 'walk', path: [[s.anchor[0], 0.5]] }));
+  const sneak = OB.bt_reach(b, Object.assign({}, s, { path: [[s.anchor[0], 0.5]] }));
+  assert(s.anchor[1] - sneak[1] < (s.anchor[1] - walk[1]) * 0.7, 'slower than walking');
+  b.zeds.length = 0; b.wave.count = 0;
+  OB.bt_set(b, s.id, { stance: 'hold' });
+  const man = OB.bt_squad_men(b, s)[0];
+  assert(OB.bt_hidden(b, man), 'unseen while creeping');
+  const z = OB.bt_spawn_zed(b, man.x, man.y - 4, 'walker');
+  const p = OB.bt_perceive(b, z, OB.bt_profile(b), false);
+  assert(!p || !OB.bt_squad_men(b, s).some((m) => m.id === p.tgt), 'the dead do not notice them four tiles off');
+  s.fired_at = 0; b.ticks = 5;
+  assert(!OB.bt_hidden(b, man), 'opening fire gives them away');
+}
+{ // caught unaware: a quiet kill in close combat; rivals shot from behind lose heart much faster than from the front
+  const b = mk({ zombies: 'spore', objective: 'take' });
+  b.zeds.length = 0; b.wave.count = 0;
+  const s = b.squads.find(OB.bt_mine), r = b.squads.find((x) => !OB.bt_mine(x));
+  placeMen(b, r, 12.5, 16.5); r.facing = [0, -1]; r.moving = false;
+  const behind = { x: 12.5, y: 20.5 }, front = { x: 12.5, y: 12.5 };
+  const target = OB.bt_squad_men(b, r)[0];
+  assert(OB.bt_unaware(b, target, behind), 'from behind');
+  assert(!OB.bt_unaware(b, target, front), 'not from the front');
+  const m0 = r.morale; OB.bt_shoot_man(b, target, 1, s, [], true);
+  assert(r.morale <= m0 - 7 && b.report.some((l) => /from behind/.test(l)));
+  assert(r.facing[1] > 0, 'and they turn to face the fire');
+  const z = OB.bt_spawn_zed(b, 3.5, 3.5, 'walker');
+  const shooter = OB.bt_squad_men(b, s)[0];
+  assert(!OB.bt_unaware(b, z, shooter), 'out in the open, no ambush on the dead');
+  OB.bt_set(b, s.id, { pace: 'sneak' });
+  assert(OB.bt_unaware(b, z, shooter), 'from hiding, at one that has noticed no one');
+}
 console.log('battle tests passed');
