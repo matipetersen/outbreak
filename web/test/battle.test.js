@@ -217,7 +217,7 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   assert(!rivals.some((s) => OB.bt_squad_men(b, s).some((m) => v[OB.bt_idx(b, Math.floor(m.x), Math.floor(m.y))])), 'rivals unseen at the start');
 }
 { // a base is taken by being alone in it for four seconds; zombies or enemies inside stop it
-  const b = mk({ objective: 'take' });
+  const b = mk({ objective: 'take', zombies: 'spore' });                  // no head-shot rule: the test zombie cannot die
   b.zeds.length = 0; b.wave.count = 0;
   const q = b.bases[0], s = b.squads.find(OB.bt_mine), r = b.squads.find((x) => !OB.bt_mine(x));
   for (const o of b.squads) if (o !== s) placeMen(b, o, o.anchor[0], o.anchor[1]);
@@ -268,5 +268,47 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   for (const s of l.squads) { if (OB.bt_mine(s)) placeMen(l, s, 2.5, l.h - 1.5); s.path = []; }
   OB.bt_run_turn(l); OB.bt_run_turn(l);
   assert(l.over && !l.over.victory && /theirs/.test(l.over.title), l.over && l.over.title);
+}
+{ // windows: sight and shots go through, people do not; the dead smash them, and then anyone can climb through
+  let b = null, k = -1;
+  for (let seed = 1; seed <= 20 && k < 0; seed++) { b = mk({ seed }); k = b.tiles.indexOf(OB.BTILE.WINDOW); }
+  assert(k >= 0, 'buildings have windows');
+  const x = k % b.w, y = Math.floor(k / b.w);
+  assert(!OB.bt_passable(b, x + 0.5, y + 0.5, 'h') && !OB.bt_passable(b, x + 0.5, y + 0.5, 'z'));
+  assert(OB.bt_los(b, x - 1.5, y + 0.5, x + 2.5, y + 0.5) || OB.bt_los(b, x + 0.5, y - 1.5, x + 0.5, y + 2.5), 'you can see through it');
+  for (let seed = 1; seed <= 10; seed++) { const r = mk({ objective: 'rescue', seed }); const h = r.house;
+    for (let yy = h.y0 - 1; yy <= h.y1 + 1; yy++) for (let xx = h.x0 - 1; xx <= h.x1 + 1; xx++) assert.notStrictEqual(OB.bt_tile(r, xx, yy), OB.BTILE.WINDOW, 'the survivors boarded theirs up'); }
+  // a brute outside a window, with the living inside, breaks in
+  b.zeds.length = 0; b.wave.count = 0;
+  for (const s of b.squads) s.stance = 'hold';
+  const out = [[0, -1], [0, 1], [-1, 0], [1, 0]].map(([dx, dy]) => [x + dx, y + dy]).find(([xx, yy]) => !OB.bt_indoor(OB.bt_tile(b, xx, yy)) && OB.bt_cost(b, OB.bt_idx(b, xx, yy), 'z') < Infinity);
+  const inn = [[0, -1], [0, 1], [-1, 0], [1, 0]].map(([dx, dy]) => [x + dx, y + dy]).find(([xx, yy]) => OB.bt_tile(b, xx, yy) === OB.BTILE.FLOOR);
+  if (out && inn) {
+    const bl = b.buildings.find((q) => x >= q[0] && x <= q[2] && y >= q[1] && y <= q[3]);           // no door: the window is the way in
+    for (let yy = bl[1]; yy <= bl[3]; yy++) for (let xx = bl[0]; xx <= bl[2]; xx++) if (OB.bt_tile(b, xx, yy) === OB.BTILE.DOOR) b.tiles[OB.bt_idx(b, xx, yy)] = OB.BTILE.WALL;
+    for (let yy = bl[1]; yy <= bl[3]; yy++) for (let xx = bl[0]; xx <= bl[2]; xx++) if (OB.bt_tile(b, xx, yy) === OB.BTILE.WINDOW && (xx !== x || yy !== y)) b.tiles[OB.bt_idx(b, xx, yy)] = OB.BTILE.WALL;
+    OB.bt_invalidate(b);
+    const z = OB.bt_spawn_zed(b, out[0] + 0.5, out[1] + 0.5, 'brute'); z.hp = 1e6; z.goal = inn;
+    OB.bt_begin_turn(b); ticks(b, 60);
+    assert.strictEqual(OB.bt_tile(b, x, y), OB.BTILE.BROKEN, 'smashed in');
+    assert(OB.bt_passable(b, x + 0.5, y + 0.5, 'h'), 'and now it can be climbed through');
+  }
+}
+{ // scouts set up in cover snipe: farther, unseen until close
+  const b = mk({ forces: ['scout', 'line'] });
+  b.zeds.length = 0; b.wave.count = 0;
+  const sc = b.squads[0];
+  let brush = null; for (let k = 0; k < b.tiles.length && !brush; k++) if (b.tiles[k] === OB.BTILE.BRUSH && Math.floor(k / b.w) > 12) brush = [k % b.w + 0.5, Math.floor(k / b.w) + 0.5];
+  assert(brush, 'some brush');
+  placeMen(b, sc, brush[0], brush[1]);
+  for (const m of OB.bt_squad_men(b, sc)) { m.x = brush[0]; m.y = brush[1]; }
+  OB.bt_begin_turn(b); ticks(b, 25);
+  assert(OB.bt_settled(b, sc), 'set up after two still seconds');
+  assert(OB.bt_squad_men(b, sc).some((m) => OB.bt_hidden(b, m)), 'hidden in the brush');
+  const z = OB.bt_spawn_zed(b, brush[0], brush[1] - 5, 'walker');
+  const p = OB.bt_perceive(b, z, OB.bt_profile(b), false);
+  assert(!p || !b.men.some((m) => m.id === p.tgt && m.squad === sc.id), 'the dead do not see a hidden sniper five tiles off');
+  sc.path = [[brush[0], brush[1] - 3]]; sc.still = 0; sc.moving = true;
+  assert(!OB.bt_settled(b, sc), 'moving gives them away');
 }
 console.log('battle tests passed');
