@@ -601,7 +601,7 @@ function bt_order_move(b, squad_id, waypoints, append) {
     if (!path.length || Math.floor(path[path.length - 1][0]) !== tx || Math.floor(path[path.length - 1][1]) !== ty) path.push([tx + 0.5, ty + 0.5]);
     from = path[path.length - 1];
   }
-  s.path = bt_smooth(b, path);
+  s.path = bt_smooth(b, path); s.face_to = null;
   return s.path;
 }
 // Drop the in-between points of straight runs so men walk in lines, not stairs.
@@ -672,14 +672,30 @@ function bt_reach(b, s) {
 }
 
 // ---------------------------------------------------------------- resolve phase
+// What the rival company can see of yours: a squad counts as seen when one of its men is in sight and line of sight of a
+// rival, and not hidden (unless very close). The rivals act on this, never on the whole map.
+function bt_seen_by_rivals(b, s) {
+  const dark = bt_dark(b), eyes = b.men.filter((m) => bt_side_of(b, m) === 'rival');
+  for (const m of bt_squad_men(b, s)) for (const e of eyes) {
+    const d = Math.hypot(m.x - e.x, m.y - e.y), st = bt_type_stats(b.era, bt_squad(b, e.squad).type);
+    if (d <= 3 || (d <= (dark ? 5 : 8) + st.sight && !bt_hidden(b, m) && bt_los(b, e.x, e.y, m.x, m.y))) return true;
+  }
+  return false;
+}
+
 // The rival company decides at the same moment you do: each squad goes for the nearest base it does not hold
-// (two at most on one target), or stays in one it holds when there is nothing left to take.
+// (two at most on one target), or stays in one it holds when there is nothing left to take. Lookouts always creep.
+// A base your men hold, with your men in sight, is not walked into from the front: one squad works round behind
+// them, sneaking and holding its fire until it is close.
 function bt_rival_orders(b) {
   const rivals = b.squads.filter((s) => !bt_mine(s) && bt_alive(b, s) && s.state !== 'broken');
   if (!rivals.length || !b.bases.length) return;
   const centre = (q) => [(q.x0 + q.x1 + 1) / 2, (q.y0 + q.y1 + 1) / 2];
   const want = b.bases.filter((q) => q.owner !== 'rival'), taken = new Map();
+  const seen = b.squads.filter((q) => bt_mine(q) && bt_alive(b, q) && bt_seen_by_rivals(b, q));
+  let flankers = rivals.length >= 3 ? 2 : 1;                         // a bigger company can spare two to go round
   for (const s of rivals) {
+    s.stance = 'fire';
     const here = bt_base_at(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1]));
     if (here && here.owner !== 'rival') { s.path = []; taken.set(here, (taken.get(here) || 0) + 1); continue; }   // finish taking it
     let pool = want.filter((q) => (taken.get(q) || 0) < 2);
@@ -689,9 +705,35 @@ function bt_rival_orders(b) {
     if (!goal) continue;
     taken.set(goal, (taken.get(goal) || 0) + 1);
     if (here === goal) { s.path = []; continue; }
-    s.pace = dist(centre(goal), s.anchor) > 12 ? 'run' : 'walk';
+    const far = dist(centre(goal), s.anchor);
+    s.pace = s.type === 'scout' ? 'sneak' : far > 12 ? 'run' : 'walk';
+    // your men in or at that base, and seen: go round behind them
+    const held = seen.find((q) => dist(q.anchor, centre(goal)) <= Math.max(goal.x1 - goal.x0, goal.y1 - goal.y0) / 2 + 3);
+    if (held && flankers > 0 && s.type !== 'heavy') {
+      const reach = Math.max(goal.x1 - goal.x0, goal.y1 - goal.y0) / 2 + 3;
+      const side = flankers === 1 && rivals.length >= 3 ? 1 : -1, back = [-held.facing[0], -held.facing[1]], across = [-held.facing[1] * side, held.facing[0] * side];
+      const spot = bt_open_spot(b, held.anchor[0] + (back[0] * 0.8 + across[0] * 0.6) * reach, held.anchor[1] + (back[1] * 0.8 + across[1] * 0.6) * reach);   // behind, a little to one side
+      if (bt_order_move(b, s.id, [spot, centre(goal)])) {
+        flankers--;
+        s.pace = 'sneak';
+        if (dist(spot, s.anchor) > 6) s.stance = 'hold';                // quiet until they are in place
+        continue;
+      }
+    }
     bt_order_move(b, s.id, [centre(goal)]);
   }
+}
+
+// Which way a squad standing still is looking (plan phase): the side it guards. Shots from behind it hurt it most.
+function bt_face(b, squad_id, x, y) {
+  const s = bt_squad(b, squad_id);
+  if (!s || b.phase !== 'plan' || !bt_mine(s)) return false;
+  const from = s.path.length ? s.path[s.path.length - 1] : s.anchor;    // a squad on the move turns that way when it arrives
+  const dx = x - from[0], dy = y - from[1], d = Math.hypot(dx, dy);
+  if (d < 0.3) return false;
+  if (s.path.length) s.face_to = [dx / d, dy / d];
+  else { s.facing = [dx / d, dy / d]; s.face_to = null; }
+  return true;
 }
 
 function bt_begin_turn(b) {
@@ -819,7 +861,7 @@ function bt_squads_step(b, fx) {
       const dx = target[0] - s.anchor[0], dy = target[1] - s.anchor[1], d = Math.hypot(dx, dy);
       if (d > 0.05) s.facing = [dx / d, dy / d];
       const stepd = speed * BT.DT;
-      if (d <= stepd) { s.anchor = [target[0], target[1]]; if (s.state !== 'broken') s.path.shift(); }
+      if (d <= stepd) { s.anchor = [target[0], target[1]]; if (s.state !== 'broken') s.path.shift(); if (!s.path.length && s.face_to) s.facing = s.face_to.slice(); }
       else s.anchor = [s.anchor[0] + dx / d * stepd, s.anchor[1] + dy / d * stepd];
     }
     const moved = Math.hypot(s.anchor[0] - before[0], s.anchor[1] - before[1]) > 1e-4;
