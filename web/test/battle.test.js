@@ -346,4 +346,43 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   OB.bt_set(b, s.id, { pace: 'sneak' });
   assert(OB.bt_unaware(b, z, shooter), 'from hiding, at one that has noticed no one');
 }
+{ // Face: a squad standing still watches the side you choose; one on the move turns that way when it gets there
+  const b = mk({});
+  const s = b.squads[0];
+  assert(OB.bt_face(b, s.id, s.anchor[0] + 5, s.anchor[1]));
+  assert(s.facing[0] > 0.99, 'looks east');
+  OB.bt_order_move(b, s.id, [[s.anchor[0], s.anchor[1] - 3]]);
+  OB.bt_face(b, s.id, s.anchor[0] - 5, s.anchor[1] - 3);
+  OB.bt_run_turn(b);
+  assert(s.facing[0] < -0.99, 'turned west on arrival');
+  assert(!OB.bt_face(b, b.squads[0].id, s.anchor[0], s.anchor[1]), 'needs a direction');
+}
+{ // the rivals creep round behind your men when they see them holding a base, and only when they see them
+  const setup = (hidden) => {
+    const b = mk({ objective: 'take', zombies: 'spore', seed: 7 });
+    b.zeds.length = 0; b.wave.count = 0;
+    const q = b.bases[b.bases.length - 1], c = [(q.x0 + q.x1 + 1) / 2, (q.y0 + q.y1 + 1) / 2];
+    q.owner = 'you';
+    const me = b.squads.find(OB.bt_mine);
+    for (const o of b.squads.filter(OB.bt_mine)) if (o !== me) placeMen(b, o, 1.5, b.h - 1.5);
+    placeMen(b, me, c[0], c[1]); me.facing = [0, -1]; me.still = 9;
+    if (hidden) { me.pace = 'sneak'; }
+    const rv = b.squads.filter((x) => !OB.bt_mine(x));
+    rv.forEach((r, i) => placeMen(b, r, OB.bt_open_spot(b, c[0] - 2 + i * 2, q.y0 - 4)[0], OB.bt_open_spot(b, c[0] - 2 + i * 2, q.y0 - 4)[1]));
+    for (const r of rv) for (const m of OB.bt_squad_men(b, r)) { m.x = r.anchor[0]; m.y = r.anchor[1]; }
+    for (const qq of b.bases) if (qq !== q) qq.owner = 'rival';                // the only base left to want is yours
+    OB.bt_rival_orders(b);
+    return { b, me, rv, q };
+  };
+  const { b, me, rv } = setup(false);
+  assert(OB.bt_seen_by_rivals(b, me), 'they see your men');
+  const flankers = rv.filter((r) => r.pace === 'sneak' && r.type !== 'scout');
+  assert(flankers.length >= 1 && flankers.length <= 2, 'one or two squads go round');
+  const fl = flankers[0];
+  assert(flankers.every((f) => f.path.some((p) => p[1] > me.anchor[1] + 1)), 'their routes pass behind your men (they face north)');
+  const hid = setup(true);
+  assert(!OB.bt_seen_by_rivals(hid.b, hid.me) || Math.min(...hid.rv.map((r) => Math.hypot(r.anchor[0] - hid.me.anchor[0], r.anchor[1] - hid.me.anchor[1]))) <= 3, 'a sneaking squad is not seen');
+  assert(!hid.rv.some((r) => r.pace === 'sneak' && r.type !== 'scout'), 'and nobody goes round what they cannot see');
+  assert(b.squads.filter((x) => !OB.bt_mine(x) && x.type === 'scout').every((x) => x.pace === 'sneak' || !x.path.length), 'lookouts creep');
+}
 console.log('battle tests passed');

@@ -193,9 +193,10 @@ function renderPanel() {
     const kind = BT_TYPES[s.type].ability, era = BT_ERAS[b.era];
     if (kind === 'lure') row2.append(btn('bt-seg' + (mode === 'ability' ? ' on' : ''), `Lure: ${era.lure} (${s.lures_left})`, () => { mode = mode === 'ability' ? null : 'ability'; renderPanel(); }));
     if (kind === 'barricade') row2.append(btn('bt-seg' + (mode === 'ability' ? ' on' : ''), `Barricade (${b.barricades_left} left)`, () => { mode = mode === 'ability' ? null : 'ability'; renderPanel(); }));
+    row2.append(btn('bt-seg' + (mode === 'face' ? ' on' : ''), 'Face', () => { mode = mode === 'face' ? null : 'face'; renderPanel(); }));
     row2.append(btn('bt-seg', 'Stop', () => { bt_clear(b, s.id); mode = null; renderPanel(); }));
     p.append(row2);
-    p.append(el('div', 'bt-hint', mode === 'ability' ? (kind === 'lure' ? 'Tap where the lure should go (within 10 tiles). The dead go to the noise for two turns.' : 'Tap a tile within 3 tiles of where the squad stops. They need 4 quiet seconds there to build it.')
+    p.append(el('div', 'bt-hint', mode === 'face' ? 'Tap the side they should watch. Fire from behind them hurts most; when they are on the move, they turn when they arrive.' : mode === 'ability' ? (kind === 'lure' ? 'Tap where the lure should go (within 10 tiles). The dead go to the noise for two turns.' : 'Tap a tile within 3 tiles of where the squad stops. They need 4 quiet seconds there to build it.')
       : s.state === 'broken' ? 'Broken: they run for safety and ignore orders until they rally.'
       : `${cap(era.weapons[s.type])}${bt_type_stats(b.era, s.type).range ? '' : ', close combat only'}. ${s.type === 'scout' ? ' Left still in brush or a building, they snipe unseen.' : ''} Tap the map to move them, or drag a route from the squad.`));
   }
@@ -288,6 +289,7 @@ function openMenu() {
     el('div', null, 'In the dark you see, and shoot, only five tiles away.'),
     el('div', null, 'Windows let sight and shots through but not people. Someone behind a window is hard to hit. The dead smash them in; a broken window can be climbed or barricaded.'),
     el('div', null, 'Sneak: half speed, and nobody notices the squad until it is close or opens fire. The dead that have not seen you are easier to drop with a head shot, and go down quietly in close combat. Rivals shot from behind (their chevron points where they look) lose heart fast.'),
+    el('div', null, 'Face: tap the side a squad should watch. The arrow at each squad shows it. The rivals see what their men see, and when they spot your men holding a base they send a squad round behind them, sneaking.'),
     el('div', null, 'Scouts that stay still for two seconds in brush or inside a building are set up as snipers: longer range, better aim, and nobody sees them until they are close.'),
     el('div', null, 'Take the town: a base (A to D) is yours after four seconds with your men inside and nobody else, living or dead. Blue outline: yours. Red: theirs. Bases you hold restock your ammunition. Hold all of them through a whole turn to win.'),
   ]));
@@ -314,7 +316,7 @@ function bindInput() {
     try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     drag = { id: e.pointerId, sx: x, sy: y, pts: [], squad: null, moved: false };
     const s = squadAt(x, y);
-    if (s && mode !== 'ability') { drag.squad = s.id; if (sel !== s.id) { sel = s.id; renderPanel(); } }
+    if (s && mode !== 'ability' && mode !== 'face') { drag.squad = s.id; if (sel !== s.id) { sel = s.id; renderPanel(); } }
   });
   cv.addEventListener('pointermove', (e) => {
     if (!drag || drag.id !== e.pointerId) return;
@@ -331,6 +333,10 @@ function bindInput() {
     if (!b || playing || b.over || e.type === 'pointercancel') return;
     const [x, y] = toTile(e);
     const s = b.squads.find((q) => q.id === sel);
+    if (mode === 'face' && s) {
+      if (bt_face(b, s.id, x, y)) { mode = null; audio_play('order'); } else flash('Tap a little farther from the squad.');
+      renderPanel(); return;
+    }
     if (mode === 'ability' && s) {
       const err = bt_set_ability(b, s.id, x, y);
       if (err) flash(err); else { mode = null; audio_play('order'); }
@@ -467,6 +473,10 @@ function draw(now, alpha) {
       if (m.hp < m.max_hp) { c.fillStyle = '#000'; c.fillRect(P(x) - ts * .35, Q(y) - ts * .5, ts * .7, 2); c.fillStyle = '#58b878'; c.fillRect(P(x) - ts * .35, Q(y) - ts * .5, ts * .7 * Math.max(0, m.hp / m.max_hp), 2); }
       if (m.bitten >= 0) { c.fillStyle = '#6a9a32'; c.beginPath(); c.arc(P(x) + ts * .3, Q(y) - ts * .3, ts * .11, 0, 7); c.fill(); }
       c.globalAlpha = 1;
+    }
+    if (s.men.length && !playing) {
+      const f = s.path.length ? (s.face_to || null) : s.facing, at = s.path.length ? s.path[s.path.length - 1] : s.anchor;
+      if (f) { const ax = P(at[0]), ay = Q(at[1]); arrow(ax, ay, ax + f[0] * ts * 1.6, ay + f[1] * ts * 1.6, col, ts); }
     }
     if (s.men.length && s.state !== 'steady') {
       c.font = `bold ${Math.max(9, Math.floor(ts * .55))}px ${MONO}`; c.textAlign = 'center'; c.textBaseline = 'middle';

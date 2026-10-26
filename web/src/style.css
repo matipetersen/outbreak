@@ -195,7 +195,8 @@ p.note { color: var(--muted); font-size: 13px; margin: 8px 0; }
 .bt-field { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; }
 .bt-field canvas { position: absolute; inset: 0; display: block; touch-action: none; }
 .bt-panel { box-sizing: border-box; flex: none; height: clamp(250px, 40%, 380px); padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); background: var(--panel); overflow-y: auto; display: flex; flex-direction: column; }
-.bt-panel .bt-go { margin-top: auto; }
+.bt-panel > * { flex-shrink: 0; }
+.bt-panel .bt-go { margin-top: auto; position: sticky; bottom: 0; box-shadow: 0 -8px 12px var(--panel); }
 .bt-panel .bt-feed { flex: none; }
 .bt-cards { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
 .bt-card { text-align: left; padding: 6px 7px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); min-width: 0; }

@@ -87,6 +87,10 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
   (then for two seconds). Fire from hiding at a zombie that has noticed no one gets more head shots; in close combat
   such a zombie goes down quietly (triple damage). A rival squad shot from behind (its chevron shows where it looks) or
   from hiding loses morale more than three times as fast, and a squad standing still turns to face whoever shoots it.
+* **Face**: tap the side a squad should watch (a squad on the move turns that way when it arrives); an arrow at each of
+  your squads shows it. **The rivals play the same game**: they act only on what their men can see; their lookouts always
+  sneak, and when they spot your men holding a base they want, one squad (two if they have three or more) sneaks round
+  behind them, holding its fire until it is close.
 * **Snipers**: scouts that stay still for two seconds in brush or inside a building are set up: longer range, better aim,
   and nobody (the dead or the rivals) notices them until close. Moving gives them away.
 * **What you see while planning**: the next wave and where it comes in (red marks on the edge), and a red arrow on every
