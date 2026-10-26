@@ -189,6 +189,7 @@ p.note { color: var(--muted); font-size: 13px; margin: 8px 0; }
 .bt-top { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px; border-bottom: 1px solid var(--line); }
 .bt-status { flex: 1; min-width: 0; font: 12px var(--mono); color: var(--muted); }
 .bt-status b { color: var(--fg); font-weight: 500; }
+.bt-l1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bt-l2 { color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.4em; }
 .bt-menu { padding: 8px 14px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); font-size: 13px; min-height: 40px; }
 .bt-field { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; }

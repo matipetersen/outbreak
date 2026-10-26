@@ -42,6 +42,11 @@ function setup() {
       if (blurb) w.append(el('div', 'blurb', blurb()));
     };
     group('Objective', 'objective', Object.entries(BT_OBJECTIVES).map(([id, o]) => [id, o.name, `${o.turns} turns`]), () => BT_OBJECTIVES[setupCfg.objective].blurb, true);
+    if (setupCfg.objective === 'take') {
+      setupCfg.rivals = BT_RIVALS[setupCfg.rivals] ? setupCfg.rivals : 'raiders';
+      const fs = CONTENT.eras[setupCfg.era].factions;
+      group('Who you are up against', 'rivals', Object.keys(BT_RIVALS).map((id) => [id, fs[id][0], null]), () => `${fs[setupCfg.rivals][1]} ${BT_RIVALS[setupCfg.rivals].words}`, true);
+    }
     group('When', 'era', Object.values(CONTENT.eras).map((e) => [e.id, `${e.year} · ${(e.name.split(' - ')[1] || e.name)}`, null]), null);
     armyBuilder(w, render);
     const pz = CONTENT.presets[setupCfg.zombies];
@@ -110,7 +115,7 @@ function bt_preset_note(p) {
 function resume() { const saved = bt_load(); if (saved) start(saved); else UI.showTitle(); }
 
 function start(battle) {
-  b = battle; sel = (b.squads.find((s) => s.men.length) || {}).id || null; mode = null; playing = false; prev = new Map(); fxs = []; decals = []; report = b.report.slice();
+  b = battle; sel = (b.squads.find((s) => bt_mine(s) && s.men.length) || {}).id || null; mode = null; playing = false; prev = new Map(); fxs = []; decals = []; report = b.report.slice();
   UI.hideAll();
   const s = $('#battle'); s.hidden = false; s.innerHTML = '';
   s.append(el('div', 'bt-top', [el('div', 'bt-status', ''), btn('bt-menu', 'Menu', openMenu)]));
@@ -154,7 +159,7 @@ function renderPanel() {
   if (b.over) return;
   // squad cards (read-only while the turn plays)
   const cards = el('div', 'bt-cards');
-  b.squads.forEach((s, i) => {
+  b.squads.filter(bt_mine).forEach((s, i) => {
     const st = bt_type_stats(b.era, s.type);
     const c = el('button', 'bt-card' + (s.id === sel ? ' on' : '') + (s.men.length ? '' : ' lost'));
     c.type = 'button'; c.style.borderColor = s.id === sel ? SQUAD_COL[i % SQUAD_COL.length] : '';
@@ -204,6 +209,7 @@ function renderStatus() {
   const light = bt_dark(b) ? 'dark' : (h >= 18.75 && h < 19.5) || (h >= 6 && h < 6.75) ? 'dim' : 'day';
   let goal = '';
   if (b.refuge) goal = `Refuge ${Math.round(b.refuge.integrity)}%`;
+  else if (b.bases.length) goal = `Bases ${b.bases.filter((q) => q.owner === 'you').length}–${b.bases.filter((q) => q.owner === 'rival').length}`;
   else goal = `Saved ${b.saved}/${b.civ_total}${b.civ_lost ? ` · lost ${b.civ_lost}` : ''}`;
   let wave = '';
   if (b.phase === 'plan' && b.wave) wave = b.wave.inside ? `Next: ${b.wave.words} waking in the buildings` : `Next: ${b.wave.words} from the ${b.wave.sides.join(' and ')}`;
@@ -238,6 +244,7 @@ function step() {
     if (f.kind === 'turn' || f.kind === 'broke') audio_play('stinger');
     if (f.kind === 'break' || f.kind === 'burst') audio_play('smash');
     if (f.kind === 'build' || f.kind === 'saved') audio_play('good');
+    if (f.kind === 'taken') audio_play('warn');
   }
   if (shot && now - sndAt > 110) { audio_play('shoot'); sndAt = now; }
   if (kill) audio_play('kill');
@@ -249,7 +256,7 @@ function finishTurn() {
   report = b.report.slice();
   vis = bt_visibility(b);
   if (b.over) { bt_delete_save(); audio_play(b.over.victory ? 'win' : 'lose'); showResult(); return; }
-  if (!b.squads.some((s) => s.id === sel && s.men.length)) sel = (b.squads.find((s) => s.men.length) || {}).id || null;
+  if (!b.squads.some((s) => s.id === sel && s.men.length)) sel = (b.squads.find((s) => bt_mine(s) && s.men.length) || {}).id || null;
   bt_save(b);
   renderPanel();
 }
@@ -278,6 +285,7 @@ function openMenu() {
     el('div', null, 'Morale falls when men die or the dead swarm a squad. A broken squad runs for safety until it rallies.'),
     el('div', null, 'Red arrows: where the dead you can see are heading. Red edge marks: where the next wave comes in.'),
     el('div', null, 'In the dark you see, and shoot, only five tiles away.'),
+    el('div', null, 'Take the town: a base (A to D) is yours after four seconds with your men inside and nobody else, living or dead. Blue outline: yours. Red: theirs. Bases you hold restock your ammunition. Hold all of them through a whole turn to win.'),
   ]));
   const m = el('div', 'menu');
   m.append(btn('btn main', 'Back to the battle', close), btn('btn', 'Save and quit', () => { if (b.phase === 'plan') bt_save(b); leave(); }),
@@ -292,7 +300,7 @@ function toTile(e) {
 }
 function squadAt(x, y) {
   let best = null, bd = 0.9;
-  for (const s of b.squads) for (const m of bt_squad_men(b, s)) { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; best = s; } }
+  for (const s of b.squads.filter(bt_mine)) for (const m of bt_squad_men(b, s)) { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; best = s; } }
   return best;
 }
 function bindInput() {
@@ -378,10 +386,7 @@ function draw(now, alpha) {
     if (!UI.sprite(c, b.era, name, px, py, ts)) { c.fillStyle = TILE_COL[t]; c.fillRect(px, py, ts + 0.5, ts + 0.5); }
     if (t === BTILE.DOOR) { c.fillStyle = 'rgba(122,85,40,.85)'; c.fillRect(px + ts * .15, py + ts * .15, ts * .7, ts * .7); }
   }
-  // places that matter
-  if (b.refuge) { const r = b.refuge; c.fillStyle = 'rgba(85,179,196,.13)'; c.fillRect(P(r.x0), Q(r.y0), (r.x1 - r.x0 + 1) * ts, (r.y1 - r.y0 + 1) * ts); }
   if (b.extract_y !== null) { c.fillStyle = 'rgba(88,184,120,.16)'; c.fillRect(P(0), Q(b.extract_y), b.w * ts, (b.h - b.extract_y) * ts); }
-  if (b.house && b.civs.some((q) => q.follow === null)) { const h = b.house; c.strokeStyle = 'rgba(85,179,196,.8)'; c.setLineDash([4, 3]); c.lineWidth = 1.5; c.strokeRect(P(h.x0), Q(h.y0), (h.x1 - h.x0 + 1) * ts, (h.y1 - h.y0 + 1) * ts); c.setLineDash([]); }
   // blood
   for (const d of decals) { c.fillStyle = d.man ? 'rgba(170,30,30,.55)' : 'rgba(90,20,20,.45)'; c.beginPath(); c.arc(P(d.x), Q(d.y), ts * .22, 0, 7); c.fill(); }
   // barricades
@@ -394,12 +399,21 @@ function draw(now, alpha) {
   // fog: the map is known, the dead are only seen where your people can see
   for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) if (!vis[y * b.w + x]) { c.fillStyle = 'rgba(4,6,8,.55)'; c.fillRect(P(x), Q(y), ts + 0.5, ts + 0.5); }
   if (bt_dark(b)) { c.fillStyle = 'rgba(10,14,40,.22)'; c.fillRect(P(0), Q(0), b.w * ts, b.h * ts); }
+  // places that matter, over the fog so they are never lost: what to defend, whom to fetch, what to take
+  if (b.refuge) place(b.refuge, `REFUGE ${Math.round(b.refuge.integrity)}%`, '#55b3c4', b.refuge.integrity < 50 && Math.sin(now / 160) > 0);
+  if (b.house && b.civs.some((q) => q.follow === null)) place(b.house, 'SURVIVORS', '#55b3c4', false);
+  if (b.extract_y !== null) label('EXIT', P(b.w / 2), Q(b.extract_y + 1), '#58b878');
+  for (const q of b.bases) {
+    const col = q.owner === 'you' ? '#55b3c4' : q.owner === 'rival' ? '#e2573f' : '#c9c2ae';
+    place(q, q.letter, col, false);
+    if (q.by) { const w = (q.x1 - q.x0 + 1) * ts; c.fillStyle = '#000'; c.fillRect(P(q.x0), Q(q.y1 + 1) - 5, w, 4); c.fillStyle = q.by === 'you' ? '#55b3c4' : '#e2573f'; c.fillRect(P(q.x0), Q(q.y1 + 1) - 5, w * Math.min(1, q.prog / 4), 4); }
+  }
   // lures
   for (const l of b.lures) { const r = ts * (0.6 + 0.4 * Math.sin(now / 200)); c.strokeStyle = 'rgba(240,196,122,.9)'; c.lineWidth = 2; c.beginPath(); c.arc(P(l.x), Q(l.y), r, 0, 7); c.stroke(); }
   // plan overlays: the next wave, orders, threat arrows
   if (!playing && b.phase === 'plan') {
     drawWave(now);
-    b.squads.forEach((s, i) => drawOrders(s, SQUAD_COL[i % SQUAD_COL.length], s.id === sel));
+    b.squads.filter(bt_mine).forEach((s, i) => drawOrders(s, SQUAD_COL[i % SQUAD_COL.length], s.id === sel));
   }
   // people and the dead
   for (const z of b.zeds) {
@@ -420,7 +434,14 @@ function draw(now, alpha) {
     if (!UI.sprite(c, b.era, 'human', P(x) - sz / 2, Q(y) - sz / 2, sz)) { c.fillStyle = '#55b3c4'; c.beginPath(); c.arc(P(x), Q(y), ts * .28, 0, 7); c.fill(); }
     if (cv2.bitten >= 0) { c.fillStyle = '#6a9a32'; c.beginPath(); c.arc(P(x) + ts * .3, Q(y) - ts * .3, ts * .1, 0, 7); c.fill(); }
   }
-  b.squads.forEach((s, i) => {
+  for (const s of b.squads.filter((q) => !bt_mine(q))) for (const m of bt_squad_men(b, s)) {
+    if (!vis[Math.floor(m.y) * b.w + Math.floor(m.x)]) continue;
+    const [x, y] = pos(m, alpha), sz = ts * .82;
+    c.fillStyle = 'rgba(226,87,63,.55)'; c.beginPath(); c.ellipse(P(x), Q(y) + ts * .3, ts * .32, ts * .12, 0, 0, 7); c.fill();
+    if (!UI.sprite(c, b.era, 'raider', P(x) - sz / 2, Q(y) - sz / 2, sz)) { c.fillStyle = '#c9992a'; c.beginPath(); c.arc(P(x), Q(y), ts * .28, 0, 7); c.fill(); }
+    if (m.hp < m.max_hp) { c.fillStyle = '#000'; c.fillRect(P(x) - ts * .35, Q(y) - ts * .5, ts * .7, 2); c.fillStyle = '#e2573f'; c.fillRect(P(x) - ts * .35, Q(y) - ts * .5, ts * .7 * Math.max(0, m.hp / m.max_hp), 2); }
+  }
+  b.squads.filter(bt_mine).forEach((s, i) => {
     const col = SQUAD_COL[i % SQUAD_COL.length];
     for (const m of bt_squad_men(b, s)) {
       const [x, y] = pos(m, alpha), sz = ts * .82;
@@ -451,6 +472,8 @@ function draw(now, alpha) {
       c.strokeStyle = `rgba(212,165,42,${a})`; c.lineWidth = 2; c.beginPath(); c.arc(P(f.x), Q(f.y), ts * (1 + 3 * (1 - a)), 0, 7); c.stroke();
     } else if (f.kind === 'turn' || f.kind === 'rise' || f.kind === 'bitten') {
       c.fillStyle = `rgba(106,154,50,${a * .7})`; c.beginPath(); c.arc(P(f.x), Q(f.y), ts * .6, 0, 7); c.fill();
+    } else if (f.kind === 'taken') {
+      c.strokeStyle = `rgba(226,87,63,${a})`; c.lineWidth = 2; c.strokeRect(P(f.x) - ts, Q(f.y) - ts, ts * 2, ts * 2);
     } else if (f.kind === 'build' || f.kind === 'saved') {
       c.strokeStyle = `rgba(88,184,120,${a})`; c.lineWidth = 2; c.strokeRect(P(f.x) - ts / 2, Q(f.y) - ts / 2, ts, ts);
     } else if (f.kind === 'break' || f.kind === 'hurt') {
@@ -462,6 +485,21 @@ function draw(now, alpha) {
     c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 2; c.setLineDash([3, 4]); c.beginPath();
     c.moveTo(P(drag.sx), Q(drag.sy)); for (const p of drag.pts) c.lineTo(P(p[0]), Q(p[1])); c.stroke(); c.setLineDash([]);
   }
+}
+
+// A place on the map: a solid outline and a name tag above it.
+function place(r, text, col, blink) {
+  const c = ctx, { ts, ox, oy } = view, x = ox + r.x0 * ts, y = oy + r.y0 * ts, w = (r.x1 - r.x0 + 1) * ts, h = (r.y1 - r.y0 + 1) * ts;
+  c.strokeStyle = blink ? '#e2573f' : col; c.lineWidth = 2; c.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  c.fillStyle = col; c.globalAlpha = 0.1; c.fillRect(x, y, w, h); c.globalAlpha = 1;
+  label(text, x + w / 2, y - 1, col);
+}
+function label(text, x, y, col) {
+  const c = ctx, fs = Math.max(9, Math.floor(view.ts * .6));
+  c.font = `600 ${fs}px ${MONO}`; c.textAlign = 'center'; c.textBaseline = 'bottom';
+  const w = c.measureText(text).width + 8;
+  c.fillStyle = 'rgba(10,14,15,.85)'; c.fillRect(x - w / 2, y - fs - 3, w, fs + 4);
+  c.fillStyle = col; c.fillText(text, x, y);
 }
 
 function arrow(x0, y0, x1, y1, col, ts) {
