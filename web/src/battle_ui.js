@@ -166,7 +166,7 @@ function renderPanel() {
     const pips = '●'.repeat(s.men.length) + '○'.repeat(Math.max(0, st.men - s.men.length));
     c.append(el('div', 'bt-cname', [el('span', 'bt-dot'), s.call || s.name]), el('div', 'bt-ctype', BT_ERAS[b.era].names[s.type]), el('div', 'bt-pips', pips),
       s.ammo_max ? bar(s.ammo / s.ammo_max, '#d99a2b') : el('div', 'bt-bar none'), bar(s.morale / 100, s.state === 'broken' ? '#e2573f' : s.state === 'shaken' ? '#d4a52a' : '#58b878'),
-      el('div', 'bt-cstate', `${stateWord(s)}${bt_settled(b, s) ? ' · hidden' : ''}${s.path.length ? ' · moving' : ''}${s.ability ? ' · ' + s.ability.kind : ''}`));
+      el('div', 'bt-cstate', `${stateWord(s)}${bt_settled(b, s) ? ' · hidden' : bt_sneaking(b, s) ? ' · sneaking' : ''}${s.path.length ? ' · moving' : ''}${s.ability ? ' · ' + s.ability.kind : ''}`));
     c.querySelector('.bt-dot').style.background = SQUAD_COL[i % SQUAD_COL.length];
     c.addEventListener('click', () => { if (playing) return; sel = s.id; mode = null; renderPanel(); });
     cards.append(c);
@@ -186,7 +186,8 @@ function renderPanel() {
       btn('bt-seg' + (s.stance === 'hold' ? ' on' : ''), 'Hold fire', () => { bt_set(b, s.id, { stance: 'hold' }); renderPanel(); }));
     row.append(el('span', 'bt-gap'));
     row.append(btn('bt-seg' + (s.pace === 'walk' ? ' on' : ''), 'Walk', () => { bt_set(b, s.id, { pace: 'walk' }); renderPanel(); }),
-      btn('bt-seg' + (s.pace === 'run' ? ' on' : ''), 'Run', () => { bt_set(b, s.id, { pace: 'run' }); renderPanel(); }));
+      btn('bt-seg' + (s.pace === 'run' ? ' on' : ''), 'Run', () => { bt_set(b, s.id, { pace: 'run' }); renderPanel(); }),
+      btn('bt-seg' + (s.pace === 'sneak' ? ' on' : ''), 'Sneak', () => { bt_set(b, s.id, { pace: 'sneak' }); renderPanel(); }));
     p.append(row);
     const row2 = el('div', 'bt-row');
     const kind = BT_TYPES[s.type].ability, era = BT_ERAS[b.era];
@@ -286,6 +287,7 @@ function openMenu() {
     el('div', null, 'Red arrows: where the dead you can see are heading. Red edge marks: where the next wave comes in.'),
     el('div', null, 'In the dark you see, and shoot, only five tiles away.'),
     el('div', null, 'Windows let sight and shots through but not people. Someone behind a window is hard to hit. The dead smash them in; a broken window can be climbed or barricaded.'),
+    el('div', null, 'Sneak: half speed, and nobody notices the squad until it is close or opens fire. The dead that have not seen you are easier to drop with a head shot, and go down quietly in close combat. Rivals shot from behind (their chevron points where they look) lose heart fast.'),
     el('div', null, 'Scouts that stay still for two seconds in brush or inside a building are set up as snipers: longer range, better aim, and nobody sees them until they are close.'),
     el('div', null, 'Take the town: a base (A to D) is yours after four seconds with your men inside and nobody else, living or dead. Blue outline: yours. Red: theirs. Bases you hold restock your ammunition. Hold all of them through a whole turn to win.'),
   ]));
@@ -451,6 +453,9 @@ function draw(now, alpha) {
     c.fillStyle = 'rgba(226,87,63,.55)'; c.beginPath(); c.ellipse(P(x), Q(y) + ts * .3, ts * .32, ts * .12, 0, 0, 7); c.fill();
     if (!UI.sprite(c, b.era, 'raider', P(x) - sz / 2, Q(y) - sz / 2, sz)) { c.fillStyle = '#c9992a'; c.beginPath(); c.arc(P(x), Q(y), ts * .28, 0, 7); c.fill(); }
     if (m.hp < m.max_hp) { c.fillStyle = '#000'; c.fillRect(P(x) - ts * .35, Q(y) - ts * .5, ts * .7, 2); c.fillStyle = '#e2573f'; c.fillRect(P(x) - ts * .35, Q(y) - ts * .5, ts * .7 * Math.max(0, m.hp / m.max_hp), 2); }
+    const ang = Math.atan2(s.facing[1], s.facing[0]), r = ts * .5, cx = P(x), cy = Q(y);       // where they are looking: come from the other side
+    c.strokeStyle = 'rgba(255,190,160,.85)'; c.lineWidth = 1.6; c.beginPath();
+    c.moveTo(cx + Math.cos(ang + 0.6) * r, cy + Math.sin(ang + 0.6) * r); c.lineTo(cx + Math.cos(ang) * (r + 4), cy + Math.sin(ang) * (r + 4)); c.lineTo(cx + Math.cos(ang - 0.6) * r, cy + Math.sin(ang - 0.6) * r); c.stroke();
   }
   b.squads.filter(bt_mine).forEach((s, i) => {
     const col = SQUAD_COL[i % SQUAD_COL.length];
@@ -485,6 +490,8 @@ function draw(now, alpha) {
       c.strokeStyle = `rgba(212,165,42,${a})`; c.lineWidth = 2; c.beginPath(); c.arc(P(f.x), Q(f.y), ts * (1 + 3 * (1 - a)), 0, 7); c.stroke();
     } else if (f.kind === 'turn' || f.kind === 'rise' || f.kind === 'bitten') {
       c.fillStyle = `rgba(106,154,50,${a * .7})`; c.beginPath(); c.arc(P(f.x), Q(f.y), ts * .6, 0, 7); c.fill();
+    } else if (f.kind === 'caught') {
+      c.strokeStyle = `rgba(255,236,170,${a})`; c.lineWidth = 2; c.beginPath(); c.arc(P(f.x), Q(f.y), ts * (0.5 + 1.2 * (1 - a)), 0, 7); c.stroke();
     } else if (f.kind === 'taken') {
       c.strokeStyle = `rgba(226,87,63,${a})`; c.lineWidth = 2; c.strokeRect(P(f.x) - ts, Q(f.y) - ts, ts * 2, ts * 2);
     } else if (f.kind === 'build' || f.kind === 'saved') {

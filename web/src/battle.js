@@ -88,9 +88,24 @@ function bt_settled(b, s) {
   const t = bt_tile(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1]));
   return t === BTILE.BRUSH || bt_indoor(t);
 }
+// A squad sneaking (half speed, no running) is not noticed either, until it opens fire: then it is seen for two seconds.
+function bt_sneaking(b, s) {
+  return !!s && s.pace === 'sneak' && s.state !== 'broken' && (b.ticks || 0) - (s.fired_at === undefined ? -99 : s.fired_at) > 20;
+}
 function bt_hidden(b, u) {
   if (u.kind !== 'man') return false;
-  return bt_settled(b, bt_squad(b, u.squad));                         // the squad is dug in where it stopped
+  const s = bt_squad(b, u.squad);
+  return bt_settled(b, s) || bt_sneaking(b, s);                      // dug in where it stopped, or creeping
+}
+const bt_pace_speed = (pace) => (pace === 'run' ? BT.RUN : pace === 'sneak' ? BT.WALK * 0.55 : BT.WALK);
+// Caught unaware: shot from hiding at a zombie that has noticed no one or at a man, or a man shot from behind.
+function bt_unaware(b, target, m) {
+  if (bt_hidden(b, m)) return target.kind !== 'zed' || target.tgt === null;    // from cover, at one that has not noticed anyone
+  if (target.kind === 'zed') return false;
+  const s = bt_squad(b, target.squad);
+  if (!s) return false;
+  const vx = m.x - target.x, vy = m.y - target.y, d = Math.hypot(vx, vy) || 1;
+  return (s.facing[0] * vx + s.facing[1] * vy) / d < -0.3;
 }
 const bt_side_of = (b, m) => { const s = bt_squad(b, m.squad); return s ? (s.side || 'you') : 'you'; };
 function bt_rival_name(b) { const f = CONTENT.eras[b.era].factions[b.cfg.rivals]; return f ? f[0] : 'The rivals'; }
@@ -614,7 +629,7 @@ function bt_set(b, squad_id, opts) {
   const s = bt_squad(b, squad_id);
   if (!s || b.phase !== 'plan') return false;
   if (opts.stance === 'fire' || opts.stance === 'hold') s.stance = opts.stance;
-  if (opts.pace === 'walk' || opts.pace === 'run') s.pace = opts.pace;
+  if (opts.pace === 'walk' || opts.pace === 'run' || opts.pace === 'sneak') s.pace = opts.pace;
   return true;
 }
 function bt_clear(b, squad_id) { const s = bt_squad(b, squad_id); if (s && b.phase === 'plan') { s.path = []; s.ability = null; } }
@@ -646,7 +661,7 @@ function bt_set_ability(b, squad_id, x, y) {
 // Where the squad's leader point will be when the turn ends, if nothing stops it (for the plan view).
 function bt_reach(b, s) {
   const st = bt_type_stats(b.era, s.type);
-  let budget = (s.pace === 'run' ? BT.RUN : BT.WALK) * st.speed * BT.TURN_TICKS * BT.DT;
+  let budget = bt_pace_speed(s.pace) * st.speed * BT.TURN_TICKS * BT.DT;
   let cur = s.anchor;
   for (const p of s.path) {
     const d = dist(cur, p) / bt_speed_factor(b, p[0], p[1], 'h');
@@ -739,7 +754,7 @@ function bt_tick(b) {
   bt_infection_step(b, fx);
   bt_objective_step(b, fx);
 
-  b.t++;
+  b.t++; b.ticks = (b.ticks || 0) + 1;
   if (!b.over && b.t >= BT.TURN_TICKS) bt_end_turn(b);
   return fx;
 }
@@ -800,7 +815,7 @@ function bt_squads_step(b, fx) {
     } else if (s.path.length) target = s.path[0];
     const before = [s.anchor[0], s.anchor[1]];
     if (target && spread < 1.6) {
-      const speed = (pace === 'run' ? BT.RUN : BT.WALK) * st.speed * bt_speed_factor(b, s.anchor[0], s.anchor[1], 'h');
+      const speed = bt_pace_speed(pace) * st.speed * bt_speed_factor(b, s.anchor[0], s.anchor[1], 'h');
       const dx = target[0] - s.anchor[0], dy = target[1] - s.anchor[1], d = Math.hypot(dx, dy);
       if (d > 0.05) s.facing = [dx / d, dy / d];
       const stepd = speed * BT.DT;
@@ -836,14 +851,14 @@ function bt_men_step(b, grid, fx) {
       const o = bt_slot(i, men.length, s.facing);
       let tx = s.anchor[0] + o[0], ty = s.anchor[1] + o[1];
       if (!bt_passable(b, tx, ty, 'h')) { tx = s.anchor[0]; ty = s.anchor[1]; }
-      const speed = (s.pace === 'run' || broken ? BT.RUN : BT.WALK) * st.speed * 1.3 * bt_speed_factor(b, m.x, m.y, 'h');
+      const speed = bt_pace_speed(broken ? 'run' : s.pace) * st.speed * 1.3 * bt_speed_factor(b, m.x, m.y, 'h');
       bt_move(b, m, tx, ty, speed * BT.DT, 'h');
       m.cd -= BT.DT; m.mcd -= BT.DT;
       // close combat first: whatever has its hands on you
       const close = bt_near_zeds(b, grid, m.x, m.y, 0.75);
       if (close.length && m.mcd <= 0) {
         const z = close[0][1];
-        const dmg = bt_int(b, st.melee[0], st.melee[1]) * (z.special && CONTENT.specials[z.special].flags.includes('tough') ? 0.7 : 1);
+        const dmg = bt_int(b, st.melee[0], st.melee[1]) * (z.special && CONTENT.specials[z.special].flags.includes('tough') ? 0.7 : 1) * (z.tgt === null ? 3 : 1);   // one that never saw it coming goes down quietly
         bt_hurt_zed(b, z, dmg, s, fx);
         m.mcd = 0.9;
         return;
@@ -862,6 +877,9 @@ function bt_men_step(b, grid, fx) {
       m.cd = st.rate * (0.85 + bt_rand(b) * 0.3);
       let acc = st.acc * (s.moving ? 0.6 : 1) * (shaken ? 0.8 : 1) * (dark ? 0.85 : 1) * (1 - 0.45 * Math.hypot(target.x - m.x, target.y - m.y) / reach);
       if (sniping) acc = Math.min(0.92, acc * 1.4);
+      const ambush = bt_unaware(b, target, m);
+      if (ambush) acc = Math.min(0.95, acc * 1.3);
+      s.fired_at = b.ticks || 0;
       const tt = bt_tile(b, Math.floor(target.x), Math.floor(target.y));
       if (tt === BTILE.BRUSH || tt === BTILE.RUBBLE) acc *= 0.75;
       if (target.kind === 'man' && bt_indoor(tt) && !bt_indoor(bt_tile(b, Math.floor(m.x), Math.floor(m.y)))) acc *= 0.6;   // behind a wall, at a window
@@ -874,11 +892,11 @@ function bt_men_step(b, grid, fx) {
         for (const [, z] of bt_near_zeds(b, grid, ix, iy, st.aoe)) bt_hurt_zed(b, z, bt_int(b, st.dmg[0], st.dmg[1]) * (prof.weakness === 'fire' || b.era === 'medieval' ? 1.2 : 1), s, fx, true);
         for (const e of foes) if (e.hp > 0 && Math.hypot(e.x - ix, e.y - iy) <= st.aoe) bt_shoot_man(b, e, bt_int(b, st.dmg[0], st.dmg[1]), s, fx);
       } else if (hit && target.kind === 'man') {
-        bt_shoot_man(b, target, bt_int(b, st.dmg[0], st.dmg[1]), s, fx);
+        bt_shoot_man(b, target, bt_int(b, st.dmg[0], st.dmg[1]), s, fx, ambush);
       } else if (hit) {
         const sp = CONTENT.specials[target.special], tough = sp.flags.includes('tough');
         let dmg = bt_int(b, st.dmg[0], st.dmg[1]);
-        if (prof.kill_rule === 'head') dmg = bt_rand(b) < 0.35 ? Math.max(dmg, tough ? dmg * 1.5 : target.hp) : dmg * 0.3;
+        if (prof.kill_rule === 'head') dmg = bt_rand(b) < (ambush ? 0.6 : 0.35) ? Math.max(dmg, tough ? dmg * 1.5 : target.hp) : dmg * 0.3;   // time to aim at one that has not seen you
         else if (tough) dmg *= 0.6;
         bt_hurt_zed(b, target, dmg, s, fx);
       }
@@ -888,10 +906,16 @@ function bt_men_step(b, grid, fx) {
 }
 
 // A man hit by the other company's fire: armour helps, and being shot at shakes the whole squad.
-function bt_shoot_man(b, m, dmg, by, fx) {
+function bt_shoot_man(b, m, dmg, by, fx, behind) {
   if (m.hp <= 0) return;
   const s = bt_squad(b, m.squad), armor = s ? bt_type_stats(b.era, s.type).armor : 1;
-  if (s) s.morale -= 2;
+  if (s) s.morale -= behind ? 7 : 2;                                  // fire from behind breaks a squad
+  if (s && behind && s.caught !== b.turn) {
+    s.caught = b.turn;
+    b.report.push(bt_mine(s) ? `${s.name} was caught from behind!` : `${s.name} were caught from behind.`);
+    fx.push({ kind: 'caught', x: m.x, y: m.y });
+  }
+  if (s && by && !s.moving) { const dx = by.anchor[0] - s.anchor[0], dy = by.anchor[1] - s.anchor[1], d = Math.hypot(dx, dy); if (d > 0.1) s.facing = [dx / d, dy / d]; }   // they turn to face the fire
   bt_hurt_living(b, m, dmg * (0.5 + 0.5 * armor), fx, null);
   if (m.hp <= 0 && by) by.kills++;
 }

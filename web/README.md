@@ -83,6 +83,10 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
 * **Windows**: buildings have them (not the survivors' boarded-up house; the refuge's are shuttered and stronger). Sight and
   shots go through, people do not; someone inside behind one is hard to hit. The dead smash them in, and a broken window
   can be climbed through or barricaded.
+* **Sneak** (a third pace with Walk and Run): half speed, and nobody notices the squad until it is close or opens fire
+  (then for two seconds). Fire from hiding at a zombie that has noticed no one gets more head shots; in close combat
+  such a zombie goes down quietly (triple damage). A rival squad shot from behind (its chevron shows where it looks) or
+  from hiding loses morale more than three times as fast, and a squad standing still turns to face whoever shoots it.
 * **Snipers**: scouts that stay still for two seconds in brush or inside a building are set up: longer range, better aim,
   and nobody (the dead or the rivals) notices them until close. Moving gives them away.
 * **What you see while planning**: the next wave and where it comes in (red marks on the edge), and a red arrow on every
