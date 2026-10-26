@@ -7,13 +7,13 @@ const memStore = () => { const m = new Map(); return { getItem: (k) => (m.has(k)
 const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m of OB.bt_squad_men(b, s)) { m.x = x; m.y = y; } };
 
 { // every era, preset and objective makes a battlefield the dead can cross and the living can use
-  for (const era of Object.keys(OB.CONTENT.eras)) for (const zombies of Object.keys(OB.CONTENT.presets)) for (const objective of ['hold', 'rescue']) {
+  for (const era of Object.keys(OB.CONTENT.eras)) for (const zombies of Object.keys(OB.CONTENT.presets)) for (const objective of ['hold', 'rescue', 'take']) {
     const b = mk({ era, zombies, objective });
     const north = []; for (let x = 0; x < b.w; x++) if (OB.bt_cost(b, x, 'z') !== Infinity) north.push(x);
     const f = OB.bt_dijkstra(b, north, 'z');
     if (b.refuge) assert(f[OB.bt_idx(b, b.refuge.x0, b.refuge.y0)] < Infinity, `${era}/${zombies}: the dead can reach the refuge`);
     if (b.house) assert(f[OB.bt_idx(b, b.house.door[0], b.house.door[1])] < Infinity, 'the dead can reach the house');
-    assert.strictEqual(b.squads.length, 4);
+    assert.strictEqual(b.squads.filter(OB.bt_mine).length, 4);
     for (const s of b.squads) for (const m of OB.bt_squad_men(b, s)) assert(OB.bt_passable(b, m.x, m.y, 'h'), 'nobody starts in a wall');
     assert(b.wave && b.wave.count > 0 && b.phase === 'plan');
   }
@@ -157,9 +157,9 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
 }
 { // whole battles run to an end without errors, with no orders at all
   const runs = Object.keys(OB.CONTENT.presets).map((z) => ({ zombies: z })).concat(Object.keys(OB.CONTENT.eras).map((e) => ({ era: e })));
-  for (const objective of ['hold', 'rescue']) for (const cfg of runs) {
+  for (const objective of ['hold', 'rescue', 'take']) for (const cfg of runs) {
     const b = mk(Object.assign({ objective, seed: 11 }, cfg));
-    for (let t = 0; t < 12 && !b.over; t++) OB.bt_run_turn(b);
+    for (let t = 0; t < 14 && !b.over; t++) OB.bt_run_turn(b);
     assert(b.over, `${objective}/${JSON.stringify(cfg)} ends`);
     assert(b.over.summary.length >= 4 && b.over.title);
   }
@@ -192,5 +192,81 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   assert(OB.bt_forces_cost(OB.BT_OBJECTIVES.rescue.forces) <= OB.BT_ARMY.budget);
   const st = memStore(), x = mk({ forces: ['line', 'scout'] }); OB.bt_save(x, st);
   assert.deepStrictEqual(OB.bt_load(st).cfg.forces, ['line', 'scout'], 'the company is in the save');
+}
+{ // Take the town: four infested bases, a rival company from the north that shoots at everyone
+  for (let seed = 1; seed <= 30; seed++) {
+    const b = mk({ objective: 'take', seed });
+    assert.strictEqual(b.bases.length, 4, `four bases (seed ${seed})`);
+    const north = []; for (let x = 0; x < b.w; x++) if (OB.bt_cost(b, x, 'z') !== Infinity) north.push(x);
+    const f = OB.bt_dijkstra(b, north, 'h');
+    for (const q of b.bases) assert(f[OB.bt_idx(b, q.x0, q.y0)] < Infinity, 'every base can be walked into');
+  }
+  const b = mk({ objective: 'take', rivals: 'military' });
+  const rivals = b.squads.filter((s) => !OB.bt_mine(s)), mine = b.squads.filter(OB.bt_mine);
+  assert.strictEqual(rivals.length, 3, 'three rival squads on normal'); assert.strictEqual(mine.length, 4);
+  assert(rivals[0].name.startsWith('Joint Task Force'), rivals[0].name);
+  assert(rivals.every((s) => s.anchor[1] < 5) && mine.every((s) => s.anchor[1] > b.h - 6), 'they start at opposite ends');
+  for (const q of b.bases) assert(b.zeds.some((z) => OB.bt_base_at(b, Math.floor(z.x), Math.floor(z.y)) === q), `${q.name} is infested`);
+  assert.strictEqual(mk({ objective: 'take', difficulty: 'hard' }).squads.filter((s) => !OB.bt_mine(s)).length, 4);
+  assert.throws(() => mk({ objective: 'take', rivals: 'aliens' }));
+  // the rivals pick bases on their own
+  OB.bt_begin_turn(b);
+  assert(rivals.every((s) => s.path.length), 'every rival squad heads for a base');
+  // the visibility and the cards ignore them; their men are hidden unless seen
+  const v = OB.bt_visibility(b);
+  assert(!rivals.some((s) => OB.bt_squad_men(b, s).some((m) => v[OB.bt_idx(b, Math.floor(m.x), Math.floor(m.y))])), 'rivals unseen at the start');
+}
+{ // a base is taken by being alone in it for four seconds; zombies or enemies inside stop it
+  const b = mk({ objective: 'take' });
+  b.zeds.length = 0; b.wave.count = 0;
+  const q = b.bases[0], s = b.squads.find(OB.bt_mine), r = b.squads.find((x) => !OB.bt_mine(x));
+  for (const o of b.squads) if (o !== s) placeMen(b, o, o.anchor[0], o.anchor[1]);
+  placeMen(b, s, (q.x0 + q.x1 + 1) / 2, (q.y0 + q.y1 + 1) / 2);
+  const z = OB.bt_spawn_zed(b, q.x0 + 0.5, q.y0 + 0.5, 'walker'); z.hp = z.max_hp = 1e6;
+  OB.bt_begin_turn(b);
+  for (const o of b.squads) if (o !== s) o.path = [];                    // only the one squad moves
+  ticks(b, 50);
+  assert.strictEqual(q.owner, null, 'not while the dead are inside');
+  b.zeds.splice(b.zeds.indexOf(z), 1);
+  ticks(b, 45);
+  assert.strictEqual(q.owner, 'you', 'taken');
+  assert(b.report.some((l) => l.includes(q.name)));
+  // rivals in it contest it; alone they take it back
+  placeMen(b, s, 1.5, b.h - 1.5);
+  placeMen(b, r, (q.x0 + q.x1 + 1) / 2, (q.y0 + q.y1 + 1) / 2);
+  ticks(b, 5);
+  if (b.phase === 'plan') OB.bt_begin_turn(b);
+  for (const o of b.squads) o.path = [];
+  ticks(b, 50);
+  assert.strictEqual(q.owner, 'rival', 'they took it from you');
+}
+{ // the two companies shoot each other
+  const b = mk({ objective: 'take' });
+  b.zeds.length = 0; b.wave.count = 0;
+  const s = b.squads.find(OB.bt_mine), r = b.squads.find((x) => !OB.bt_mine(x));
+  const spot = OB.bt_open_spot(b, 3.5, b.h - 8.5), spot2 = OB.bt_open_spot(b, spot[0], spot[1] - 4);
+  placeMen(b, s, spot[0], spot[1]); placeMen(b, r, spot2[0], spot2[1]);
+  OB.bt_begin_turn(b);
+  for (const o of b.squads) o.path = [];
+  const before = OB.bt_squad_men(b, s).reduce((a, m) => a + m.hp, 0) + OB.bt_squad_men(b, r).reduce((a, m) => a + m.hp, 0);
+  ticks(b, 60);
+  const after = OB.bt_squad_men(b, s).reduce((a, m) => a + m.hp, 0) + OB.bt_squad_men(b, r).reduce((a, m) => a + m.hp, 0);
+  assert(after < before, 'blood is drawn on both sides of the line');
+}
+{ // holding every base wins only once it has been held through a whole turn; the rivals can win the same way
+  const b = mk({ objective: 'take' });
+  for (const q of b.bases) q.owner = 'you';
+  b.zeds.length = 0; b.wave.count = 0;
+  for (const s of b.squads.filter((x) => !OB.bt_mine(x))) { for (const m of OB.bt_squad_men(b, s)) b.men.splice(b.men.indexOf(m), 1); s.men = []; }
+  OB.bt_run_turn(b);
+  assert(!b.over && b.hold_all === 'you', 'one turn is not enough');
+  OB.bt_run_turn(b);
+  assert(b.over && b.over.victory, b.over && b.over.title);
+  const l = mk({ objective: 'take' });
+  for (const q of l.bases) q.owner = 'rival';
+  l.zeds.length = 0; l.wave.count = 0;
+  for (const s of l.squads) { if (OB.bt_mine(s)) placeMen(l, s, 2.5, l.h - 1.5); s.path = []; }
+  OB.bt_run_turn(l); OB.bt_run_turn(l);
+  assert(l.over && !l.over.victory && /theirs/.test(l.over.title), l.over && l.over.title);
 }
 console.log('battle tests passed');

@@ -60,7 +60,13 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
 
 * **Objectives**: *Hold the refuge* (ten turns from dusk into the dark; the dead inside wear it down; squads inside at the
   end of a turn restock ammunition) and *Bring them out* (survivors barricaded in a house to the north come out to the
-  first squad at their door and follow it; bring at least half to the south edge in ten turns).
+  first squad at their door and follow it; bring at least half to the south edge in ten turns) and *Take the town*
+  (twelve turns: four buildings marked A to D, each infested; a base is yours after four seconds with your men inside and
+  nobody else, living or dead; bases you hold restock ammunition. A rival faction of the era comes from the north for the
+  same bases and shoots at you and at the dead: raiders, the military (with a machine gun) or a cult that does not break;
+  three squads on normal, two on easy, four on hard. Holding every base through a whole turn wins early, for either side;
+  otherwise whoever holds more at the end). The map labels what matters: REFUGE, SURVIVORS, EXIT and the bases, coloured
+  by owner.
 * **Your company** is bought on the setup screen from 13 points, one to five squads: riflemen (or the era's line) 3,
   shield squad 3, heavy weapon 4, scouts 2. Each objective offers a standard company to start from; the choice is kept for
   the next battle and stored in the save. The first squads take the posts nearest the danger.

@@ -62,9 +62,27 @@ const BT_PRESET_SCALE = { classic: 1.35, rage: 1.7, swarm: 0.8 };
 const BT_OBJECTIVES = {
   hold: { name: 'Hold the refuge', turns: 10, hour0: 18, minutes: 15, forces: ['line', 'shield', 'line', 'heavy'],
           blurb: 'People are sheltering inside. Keep the dead out of it until the night is over: ten turns, from dusk into the dark. Squads inside at the end of a turn restock their ammunition.' },
+  take: { name: 'Take the town', turns: 12, hour0: 11, minutes: 20, forces: ['line', 'shield', 'line', 'scout'],
+          blurb: 'Four buildings are worth holding, and the dead are in all of them. Clear one and keep your men inside it for a few seconds with nobody else there: it is yours, and it restocks your ammunition. A rival faction wants the same buildings and shoots at anyone. Hold them all, or more than the rivals after twelve turns.' },
   rescue: { name: 'Bring them out', turns: 10, hour0: 4.5, minutes: 15, forces: ['line', 'shield', 'scout', 'line'],
             blurb: 'Survivors are trapped in a house to the north. Reach them, and they follow the squad that found them. Bring at least half of them to the south edge before ten turns are up.' },
 };
+
+// The rival company in "Take the town": one of the era's factions, a different mix for each; difficulty adds or removes a squad.
+const BT_RIVALS = {
+  raiders: { forces: ['line', 'scout', 'line', 'shield'], morale: 0, words: 'They loot, they shoot, they run when it goes badly.' },
+  military: { forces: ['line', 'heavy', 'line', 'shield'], morale: 10, words: 'Drilled and well armed, with a machine gun.' },
+  cult: { forces: ['shield', 'shield', 'line', 'line'], morale: 30, words: 'Badly armed, and they do not break.' },
+};
+const BT_RIVAL_TYPES = { line: 'gunmen', shield: 'brawlers', heavy: 'machine-gunners', scout: 'lookouts' };
+const BT_RIVAL_TYPES_OLD = { line: 'bowmen', shield: 'axemen', heavy: 'fire-throwers', scout: 'lookouts' };
+const BT_BASE_NAMES = {
+  medieval: ['the mill', 'the tithe barn', 'the inn', 'the smithy'], eighties: ['the gas station', 'the motel', 'the diner', 'the pharmacy'],
+  modern: ['the pharmacy', 'the depot', 'the clinic', 'the warehouse'], scifi: ['hydroponics', 'the armoury', 'the comms hub', 'the reactor annex'],
+};
+const bt_mine = (s) => s.side !== 'rival';
+const bt_side_of = (b, m) => { const s = bt_squad(b, m.squad); return s ? (s.side || 'you') : 'you'; };
+function bt_rival_name(b) { const f = CONTENT.eras[b.era].factions[b.cfg.rivals]; return f ? f[0] : 'The rivals'; }
 
 function bt_type_stats(era_id, type) {
   const e = BT_ERAS[era_id] || BT_ERAS.modern;
@@ -215,6 +233,8 @@ function bt_generate(b) {
     b.refuge = { x0: x0 + 1, y0: y0 + 1, x1: x1 - 1, y1: y1 - 1, integrity: 100 };
     b.buildings.push([x0, y0, x1, y1]);
     b.keep.push([x0 - 3, y0 - 5, x1 + 3, H - 1]);
+  } else if (b.objective === 'take') {
+    b.keep.push([0, 0, W - 1, 3], [0, H - 5, W - 1, H - 1]);              // the two companies come in from the ends
   } else {
     b.extract_y = H - 2;
     b.keep.push([0, H - 6, W - 1, H - 1]);
@@ -240,6 +260,7 @@ function bt_generate(b) {
     bt_building(b, x0, y0, x1, y1, inner.length ? inner : [[bt_int(b, x0 + 1, x1 - 1), y1]]);
     b.buildings.push([x0, y0, x1, y1]);
   }
+  if (b.objective === 'take') bt_pick_bases(b);
   const scatter = (t, n, len) => {
     for (let i = 0; i < n; i++) {
       let x = bt_int(b, 0, W - 1), y = bt_int(b, 0, H - 1);
@@ -265,12 +286,40 @@ function bt_generate(b) {
     const px = bt_int(b, 1, W - 4), py = bt_int(b, 3, H - 12);
     for (let y = py; y < py + 2; y++) for (let x = px; x < px + 3; x++) if (b.tiles[bt_idx(b, x, y)] === BTILE.GRASS && !bt_reserved(b, x, y)) b.tiles[bt_idx(b, x, y)] = BTILE.WATER;
   }
+  // nothing planted in front of a door
+  for (let k = 0; k < b.tiles.length; k++) {
+    if (b.tiles[k] !== BTILE.DOOR) continue;
+    const x = k % W, y = (k - x) / W;
+    for (const [dx, dy] of DIRS4) {
+      const nx = x + dx, ny = y + dy;
+      if (!bt_in(b, nx, ny)) continue;
+      const t = b.tiles[bt_idx(b, nx, ny)];
+      if (t === BTILE.TREE || t === BTILE.WATER || t === BTILE.FENCE) b.tiles[bt_idx(b, nx, ny)] = BTILE.GRASS;
+    }
+  }
   bt_fix_connectivity(b);
 }
 
+// The four buildings worth holding: the roomiest, spread over the middle of the map.
+function bt_pick_bases(b) {
+  const W = b.w, H = b.h;
+  for (let tries = 0; tries < 200 && b.buildings.length < 4; tries++) {          // a town needs at least four
+    const bw = bt_int(b, 4, 6), bh = bt_int(b, 4, 5), x0 = bt_int(b, 0, W - bw), y0 = bt_int(b, 5, H - bh - 6);
+    const x1 = x0 + bw - 1, y1 = y0 + bh - 1;
+    if (!bt_free(b, x0, y0, x1, y1)) continue;
+    bt_building(b, x0, y0, x1, y1, [[bt_int(b, x0 + 1, x1 - 1), bt_rand(b) < 0.5 ? y0 : y1]]);
+    b.buildings.push([x0, y0, x1, y1]);
+  }
+  const by = b.buildings.slice().sort((p, q) => (q[2] - q[0]) * (q[3] - q[1]) - (p[2] - p[0]) * (p[3] - p[1]) || p[1] - q[1] || p[0] - q[0]).slice(0, 4);
+  by.sort((p, q) => p[1] - q[1] || p[0] - q[0]);
+  const names = BT_BASE_NAMES[b.era] || BT_BASE_NAMES.modern;
+  b.bases = by.map((q, i) => ({ x0: q[0] + 1, y0: q[1] + 1, x1: q[2] - 1, y1: q[3] - 1, name: names[i], letter: 'ABCD'[i], owner: null, prog: 0, by: null }));
+}
+function bt_base_at(b, x, y) { return b.bases.find((q) => x >= q.x0 && x <= q.x1 && y >= q.y0 && y <= q.y1) || null; }
+
 // Anything the dead could not reach from the north edge (an island cut off by trees and water) is cleared.
 function bt_fix_connectivity(b) {
-  for (let pass = 0; pass < 6; pass++) {
+  for (let pass = 0; pass < 40; pass++) {
     const goals = [];
     for (let x = 0; x < b.w; x++) if (bt_cost(b, x, 'z') !== Infinity) goals.push(x);
     const f = bt_dijkstra(b, goals, 'z');
@@ -287,6 +336,7 @@ function bt_fix_connectivity(b) {
         if (nt === BTILE.TREE || nt === BTILE.WATER || nt === BTILE.FENCE) { b.tiles[bt_idx(b, nx, ny)] = BTILE.GRASS; fixed = true; break; }
         if (nt === BTILE.WALL && !(b.refuge && nx >= b.refuge.x0 - 1 && nx <= b.refuge.x1 + 1 && ny >= b.refuge.y0 - 1 && ny <= b.refuge.y1 + 1)) { b.tiles[bt_idx(b, nx, ny)] = BTILE.DOOR; fixed = true; break; }
       }
+      if (fixed) break;                                                 // one opening at a time, then look again
     }
     if (!fixed) return;
   }
@@ -299,6 +349,8 @@ function bt_new(cfg) {
   if (!CONTENT.presets[cfg.zombies]) throw new Error('unknown zombies ' + cfg.zombies);
   if (!BT_OBJECTIVES[cfg.objective]) throw new Error('unknown objective ' + cfg.objective);
   if (!CONTENT.difficulties[cfg.difficulty]) throw new Error('unknown difficulty ' + cfg.difficulty);
+  if (cfg.objective === 'take' && !BT_RIVALS[cfg.rivals || 'raiders']) throw new Error('unknown rivals ' + cfg.rivals);
+  if (cfg.objective === 'take') cfg.rivals = cfg.rivals || 'raiders';
   if (cfg.forces) { const err = bt_forces_error(cfg.forces); if (err) throw new Error(err); cfg.forces = cfg.forces.slice(); }
   const seed = cfg.seed !== null && cfg.seed !== undefined ? cfg.seed >>> 0 : Math.floor(Math.random() * 1073741824);
   const obj = BT_OBJECTIVES[cfg.objective], prof = CONTENT.presets[cfg.zombies];
@@ -306,7 +358,7 @@ function bt_new(cfg) {
     v: 1, cfg: Object.assign({}, cfg, { seed }), seed, rng: (seed ^ 0xBA77E) >>> 0 || 1, era: cfg.era, preset: cfg.zombies, objective: cfg.objective,
     w: BT.W, h: BT.H, turn: 1, turns: obj.turns, t: 0, phase: 'plan', uid: 1, swarm: !!prof.swarm,
     squads: [], men: [], zeds: [], civs: [], corpses: [], noises: [], lures: [], barricades: {}, barricades_left: 4,
-    pending: [], wave: null, kills: 0, lost: 0, turned: 0, saved: 0, civ_lost: 0, civ_total: 0, report: [], over: null, refuge: null, house: null, extract_y: null,
+    pending: [], wave: null, kills: 0, lost: 0, turned: 0, saved: 0, civ_lost: 0, civ_total: 0, report: [], over: null, refuge: null, house: null, extract_y: null, bases: [], rival_lost: 0, hold_all: null,
   };
   bt_generate(b);
   if (b.house) b.barricades[bt_idx(b, b.house.door[0], b.house.door[1])] = 160;     // the survivors have nailed their door shut
@@ -318,8 +370,11 @@ function bt_new(cfg) {
 }
 
 function bt_opening_line(b) {
-  const obj = BT_OBJECTIVES[b.objective], prof = CONTENT.presets[b.preset];
-  return `${obj.name}. ${prof.blurb}`;
+  const prof = CONTENT.presets[b.preset], era = BT_ERAS[b.era] || BT_ERAS.modern;
+  const goal = b.objective === 'hold' ? `Keep the dead out of the building marked REFUGE (${era.refuge}, bottom of the map) for ${b.turns} turns.`
+    : b.objective === 'rescue' ? `The ${era.survivors} are in the house marked SURVIVORS. Reach its door, then bring them to the green strip at the bottom.`
+    : `Take the buildings marked A to D: clear out the dead, then keep men inside with nobody else there. ${bt_rival_name(b)} come from the north for the same.`;
+  return `${goal} ${prof.blurb}`;
 }
 
 function bt_deploy(b) {
@@ -334,12 +389,11 @@ function bt_deploy(b) {
   } else {
     for (let i = 0; i < types.length; i++) spots.push([types.length > 1 ? 4 + i * (b.w - 8) / (types.length - 1) : b.w / 2, b.h - 3.5]);
   }
-  types.forEach((type, i) => {
-    const st = bt_type_stats(b.era, type);
+  const make = (type, i, side, spot, name, call) => {
+    const st = bt_type_stats(b.era, type), extra = side === 'rival' ? BT_RIVALS[b.cfg.rivals].morale : 0;
     const leader = names[ni++ % names.length];
-    const name = era.medieval ? `${leader}'s ${era.names[type]}` : `${BT_CALLSIGNS[i]} · ${era.names[type]}`;
-    const s = { id: b.uid++, type, name, call: era.medieval ? leader : BT_CALLSIGNS[i], leader, men: [], path: [], stance: 'fire', pace: 'walk', ability: null, ammo: st.ammo, ammo_max: st.ammo,
-                morale: st.morale, morale_max: st.morale, state: 'steady', anchor: bt_open_spot(b, spots[i][0], spots[i][1]), facing: [0, -1], still: 9, build: 0, lures_left: type === 'scout' ? 2 : 0, last_noise: -9, kills: 0, lost: 0 };
+    const s = { id: b.uid++, side, type, name: name || leader, call: call || leader, leader, men: [], path: [], stance: 'fire', pace: 'walk', ability: null, ammo: st.ammo, ammo_max: st.ammo,
+                morale: st.morale + extra, morale_max: st.morale + extra, state: 'steady', anchor: bt_open_spot(b, spot[0], spot[1]), facing: side === 'rival' ? [0, 1] : [0, -1], still: 9, build: 0, lures_left: type === 'scout' && side === 'you' ? 2 : 0, last_noise: -9, kills: 0, lost: 0 };
     for (let m = 0; m < st.men; m++) {
       const off = bt_slot(m, st.men, s.facing);
       const p = bt_open_spot(b, s.anchor[0] + off[0], s.anchor[1] + off[1]);
@@ -347,7 +401,19 @@ function bt_deploy(b) {
       b.men.push(man); s.men.push(man.id);
     }
     b.squads.push(s);
+    return s;
+  };
+  types.forEach((type, i) => {
+    const call = era.medieval ? null : BT_CALLSIGNS[i];
+    const s = make(type, i, 'you', spots[i], null, call);
+    s.name = era.medieval ? `${s.leader}'s ${era.names[type]}` : `${call} · ${era.names[type]}`;
   });
+  if (b.objective === 'take') {
+    const rv = BT_RIVALS[b.cfg.rivals], d = b.cfg.difficulty;
+    const rtypes = d === 'easy' ? rv.forces.slice(0, 2) : d === 'hard' ? rv.forces.slice() : rv.forces.slice(0, 3);
+    const fname = bt_rival_name(b), words = era.medieval ? BT_RIVAL_TYPES_OLD : BT_RIVAL_TYPES;
+    rtypes.forEach((type, i) => make(type, i, 'rival', [rtypes.length > 1 ? 4 + i * (b.w - 8) / (rtypes.length - 1) : b.w / 2, 2.5], `${fname}: ${words[type]}`, fname));
+  }
   if (b.objective === 'rescue') {
     const hs = b.house, n = 6;
     for (let i = 0; i < n; i++) {
@@ -408,12 +474,14 @@ function bt_spawn_zed(b, x, y, special) {
 
 // Some of the dead are already here when the battle starts.
 function bt_seed_dead(b) {
-  const prof = bt_profile(b), n = Math.round((b.objective === 'rescue' ? 16 : 10) * bt_mult(b));
+  const prof = bt_profile(b), n = Math.round((b.objective === 'rescue' ? 16 : b.objective === 'take' ? 12 : 10) * bt_mult(b));
+  for (const q of b.bases) for (let i = 0, k = Math.max(2, Math.round(3 * bt_mult(b))); i < k; i++)            // every base is infested
+    bt_spawn_zed(b, bt_int(b, q.x0, q.x1) + 0.5, bt_int(b, q.y0, q.y1) + 0.5, bt_pick_special(b));
   const day = !bt_dark(b);
   for (let i = 0; i < n; i++) {
     let spot = null;
     for (let tries = 0; tries < 60 && !spot; tries++) {
-      const x = bt_int(b, 0, b.w - 1), y = bt_int(b, 0, Math.floor(b.h * 0.62));
+      const x = bt_int(b, 0, b.w - 1), y = b.objective === 'take' ? bt_int(b, 5, b.h - 7) : bt_int(b, 0, Math.floor(b.h * 0.62));
       const k = bt_idx(b, x, y), t = b.tiles[k];
       if (bt_cost(b, k, 'z') === Infinity || bt_reserved(b, x, y) && b.objective === 'hold') continue;
       if (prof.sun_burn && day && !bt_indoor(t)) continue;              // the sun-shy dead wait indoors
@@ -427,7 +495,7 @@ function bt_seed_dead(b) {
 // What comes next turn, and from where: shown to the player while they plan.
 function bt_plan_wave(b) {
   if (b.turn > b.turns) { b.wave = null; return; }
-  const k = b.turn, base = b.objective === 'hold' ? 6 + 3.6 * k : 3 + 1.8 * k;
+  const k = b.turn, base = b.objective === 'hold' ? 6 + 3.6 * k : b.objective === 'take' ? 2 + 1.2 * k : 3 + 1.8 * k;
   let count = Math.max(1, Math.round(base * bt_mult(b)));
   if (b.objective === 'hold' && k === b.turns - 1) count = Math.round(count * 1.6);       // the last big push before dawn
   const prof = bt_profile(b);
@@ -435,10 +503,11 @@ function bt_plan_wave(b) {
   const dayNext = !(hourNext % 24 >= 19.5 || hourNext % 24 < 6);
   const inside = !!prof.sun_burn && dayNext;
   if (inside) count = Math.max(1, Math.round(count * 0.4));          // by day only a few find a way in and wait in the dark
-  const sides = ['north'];
-  if (k >= 3) sides.push(bt_rand(b) < 0.5 ? 'west' : 'east');
-  if (k >= 6 && bt_rand(b) < 0.6) sides.push(sides.includes('west') ? 'east' : 'west');
-  const entries = sides.map((side) => ({ side, at: side === 'north' ? bt_int(b, 2, b.w - 3) : bt_int(b, 2, Math.floor(b.h * 0.55)) }));
+  const sides = b.objective === 'take' ? [bt_rand(b) < 0.5 ? 'west' : 'east'] : ['north'];
+  if (b.objective === 'take' && k >= 5) sides.push(sides[0] === 'west' ? 'east' : 'west');
+  if (b.objective !== 'take' && k >= 3) sides.push(bt_rand(b) < 0.5 ? 'west' : 'east');
+  if (b.objective !== 'take' && k >= 6 && bt_rand(b) < 0.6) sides.push(sides.includes('west') ? 'east' : 'west');
+  const entries = sides.map((side) => ({ side, at: side === 'north' ? bt_int(b, 2, b.w - 3) : b.objective === 'take' ? bt_int(b, 7, b.h - 8) : bt_int(b, 2, Math.floor(b.h * 0.55)) }));
   b.wave = { count, sides: inside ? [] : sides, entries: inside ? [] : entries, inside, words: count < 6 ? 'a few' : count < 15 ? 'a crowd' : count < 35 ? 'a horde' : 'a tide' };
 }
 
@@ -450,7 +519,7 @@ function bt_wave_spot(b, side, near) {
     else if (side === 'west') { x = bt_int(b, 0, 2); y = along; }
     else if (side === 'east') { x = bt_int(b, b.w - 3, b.w - 1); y = along; }
     else {                                                            // inside a building (not the refuge)
-      const bl = bt_pick(b, b.buildings.filter((q) => !b.refuge || q[1] < b.refuge.y0 - 2));
+      const bl = bt_pick(b, b.buildings.filter((q) => (!b.refuge || q[1] < b.refuge.y0 - 2) && !bt_in_house(b, q[0] + 1, q[1] + 1, 0)));
       if (!bl) return null;
       x = bt_int(b, bl[0] + 1, bl[2] - 1); y = bt_int(b, bl[1] + 1, bl[3] - 1);
     }
@@ -561,8 +630,31 @@ function bt_reach(b, s) {
 }
 
 // ---------------------------------------------------------------- resolve phase
+// The rival company decides at the same moment you do: each squad goes for the nearest base it does not hold
+// (two at most on one target), or stays in one it holds when there is nothing left to take.
+function bt_rival_orders(b) {
+  const rivals = b.squads.filter((s) => !bt_mine(s) && bt_alive(b, s) && s.state !== 'broken');
+  if (!rivals.length || !b.bases.length) return;
+  const centre = (q) => [(q.x0 + q.x1 + 1) / 2, (q.y0 + q.y1 + 1) / 2];
+  const want = b.bases.filter((q) => q.owner !== 'rival'), taken = new Map();
+  for (const s of rivals) {
+    const here = bt_base_at(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1]));
+    if (here && here.owner !== 'rival') { s.path = []; taken.set(here, (taken.get(here) || 0) + 1); continue; }   // finish taking it
+    let pool = want.filter((q) => (taken.get(q) || 0) < 2);
+    if (!pool.length) pool = b.bases.filter((q) => q.owner === 'rival');
+    pool.sort((p, q) => dist(centre(p), s.anchor) - dist(centre(q), s.anchor) || p.letter.localeCompare(q.letter));
+    const goal = pool[0];
+    if (!goal) continue;
+    taken.set(goal, (taken.get(goal) || 0) + 1);
+    if (here === goal) { s.path = []; continue; }
+    s.pace = dist(centre(goal), s.anchor) > 12 ? 'run' : 'walk';
+    bt_order_move(b, s.id, [centre(goal)]);
+  }
+}
+
 function bt_begin_turn(b) {
   if (b.phase !== 'plan' || b.over) return false;
+  bt_rival_orders(b);
   b.phase = 'resolve'; b.t = 0; b.report = [];
   const era = BT_ERAS[b.era] || BT_ERAS.modern;
   for (const s of b.squads) {
@@ -658,7 +750,8 @@ function bt_move(b, u, tx, ty, step, who) {
   return false;
 }
 
-function bt_safe_goal(b) {
+function bt_safe_goal(b, s) {
+  if (s && !bt_mine(s)) return [Math.floor(b.w / 2), 0];
   if (b.refuge) { const r = b.refuge; return [Math.floor((r.x0 + r.x1) / 2), Math.floor((r.y0 + r.y1) / 2)]; }
   return [Math.floor(b.w / 2), b.h - 1];
 }
@@ -674,7 +767,7 @@ function bt_squads_step(b, fx) {
     spread /= Math.max(1, men.length);
     let target = null, pace = s.pace;
     if (s.state === 'broken') {
-      const g = bt_safe_goal(b), f = bt_hfield(b, 'safe', [bt_idx(b, g[0], g[1])]);
+      const g = bt_safe_goal(b, s), f = bt_hfield(b, 'safe' + g[1], [bt_idx(b, g[0], g[1])]);
       const nx = bt_descend(b, f, s.anchor[0], s.anchor[1], 'h');
       target = nx ? [nx[0] + 0.5, nx[1] + 0.5] : null; pace = 'run';
     } else if (s.path.length) target = s.path[0];
@@ -711,6 +804,7 @@ function bt_men_step(b, grid, fx) {
     const st = bt_type_stats(b.era, s.type), men = bt_squad_men(b, s);
     const shaken = s.state === 'shaken', broken = s.state === 'broken';
     const runningNow = s.moving && (s.pace === 'run' || broken);
+    const side = s.side || 'you', foes = b.men.filter((e) => bt_side_of(b, e) !== side);
     men.forEach((m, i) => {
       const o = bt_slot(i, men.length, s.facing);
       let tx = s.anchor[0] + o[0], ty = s.anchor[1] + o[1];
@@ -729,7 +823,10 @@ function bt_men_step(b, grid, fx) {
       }
       if (broken || s.stance !== 'fire' || st.range <= 0 || s.ammo <= 0 || m.cd > 0 || runningNow) return;
       if (st.setup && s.still < st.setup) return;
-      const cand = bt_near_zeds(b, grid, m.x, m.y, Math.min(st.range, (dark ? 5 : 8) + st.sight));       // nobody shoots what they cannot see
+      const reach = Math.min(st.range, (dark ? 5 : 8) + st.sight);                  // nobody shoots what they cannot see
+      const cand = bt_near_zeds(b, grid, m.x, m.y, reach);
+      for (const e of foes) { const d = Math.hypot(e.x - m.x, e.y - m.y); if (d <= reach) cand.push([d, e]); }
+      if (foes.length) cand.sort((p, q) => p[0] - q[0] || p[1].id - q[1].id);
       let target = null;
       for (let c = 0; c < cand.length && c < 5; c++) if (bt_los(b, m.x, m.y, cand[c][1].x, cand[c][1].y)) { target = cand[c][1]; break; }
       if (!target) return;
@@ -745,6 +842,9 @@ function bt_men_step(b, grid, fx) {
       if (st.aoe) {
         fx.push({ kind: 'aoe', x: ix, y: iy, r: st.aoe });
         for (const [, z] of bt_near_zeds(b, grid, ix, iy, st.aoe)) bt_hurt_zed(b, z, bt_int(b, st.dmg[0], st.dmg[1]) * (prof.weakness === 'fire' || b.era === 'medieval' ? 1.2 : 1), s, fx, true);
+        for (const e of foes) if (e.hp > 0 && Math.hypot(e.x - ix, e.y - iy) <= st.aoe) bt_shoot_man(b, e, bt_int(b, st.dmg[0], st.dmg[1]), s, fx);
+      } else if (hit && target.kind === 'man') {
+        bt_shoot_man(b, target, bt_int(b, st.dmg[0], st.dmg[1]), s, fx);
       } else if (hit) {
         const sp = CONTENT.specials[target.special], tough = sp.flags.includes('tough');
         let dmg = bt_int(b, st.dmg[0], st.dmg[1]);
@@ -755,6 +855,15 @@ function bt_men_step(b, grid, fx) {
       if (b.t - s.last_noise >= 4 || b.t < s.last_noise) { bt_noise(b, m.x, m.y, st.noise, fx); s.last_noise = b.t; }
     });
   }
+}
+
+// A man hit by the other company's fire: armour helps, and being shot at shakes the whole squad.
+function bt_shoot_man(b, m, dmg, by, fx) {
+  if (m.hp <= 0) return;
+  const s = bt_squad(b, m.squad), armor = s ? bt_type_stats(b.era, s.type).armor : 1;
+  if (s) s.morale -= 2;
+  bt_hurt_living(b, m, dmg * (0.5 + 0.5 * armor), fx, null);
+  if (m.hp <= 0 && by) by.kills++;
 }
 
 function bt_hurt_zed(b, z, dmg, s, fx, fire) {
@@ -784,7 +893,7 @@ function bt_infect(b, u, fx) {
   const prof = bt_profile(b);
   u.bitten = Math.max(3, prof.incubation / 10);                        // a main-game turn is about a tenth of a battle second
   fx.push({ kind: 'bitten', x: u.x, y: u.y });
-  if (u.kind === 'man') { const s = bt_squad(b, u.squad); if (s) { s.morale -= 5; b.report.push(`${u.name} (${s.name}) is infected.`); } }
+  if (u.kind === 'man') { const s = bt_squad(b, u.squad); if (s) { s.morale -= 5; if (bt_mine(s)) b.report.push(`${u.name} (${s.name}) is infected.`); } }
 }
 
 function bt_hurt_living(b, u, dmg, fx, z) {
@@ -805,10 +914,11 @@ function bt_kill_living(b, u, fx, turned) {
     if (s) {
       s.men = s.men.filter((id) => id !== u.id); s.lost++;
       s.morale -= turned ? 18 : 14;
-      b.report.push(turned ? `${u.name} (${s.name}) turned.` : `${u.name} (${s.name}) is down.`);
-      if (!s.men.length) b.report.push(`${s.name} is gone.`);
+      if (bt_mine(s)) b.report.push(turned ? `${u.name} (${s.name}) turned.` : `${u.name} (${s.name}) is down.`);
+      if (!s.men.length) b.report.push(`${s.name} ${bt_mine(s) ? 'is gone' : 'are finished'}.`);
     }
-    if (turned) b.turned++; else b.lost++;
+    if (s && !bt_mine(s)) b.rival_lost++;
+    else if (turned) b.turned++; else b.lost++;
   } else {
     b.civs.splice(b.civs.indexOf(u), 1);
     b.civ_lost++;
@@ -828,7 +938,7 @@ function bt_civs_step(b, fx) {
       const hs = b.house, door = [hs.door[0] + 0.5, hs.door[1] + 0.5];
       const hiding = bt_in_house(b, Math.floor(c.x), Math.floor(c.y), 0);
       for (const s of b.squads) {
-        if (!bt_alive(b, s) || s.state === 'broken') continue;
+        if (!bt_alive(b, s) || s.state === 'broken' || !bt_mine(s)) continue;
         if (dist(s.anchor, [c.x, c.y]) <= 2.5 || (hiding && dist(s.anchor, door) <= 2.5)) {
           c.follow = s.id;
           const dk = bt_idx(b, hs.door[0], hs.door[1]);
@@ -884,7 +994,8 @@ function bt_perceive(b, z, prof, dark) {
 function bt_default_goal(b, z, prof, dark) {
   if (prof.sun_burn && !dark) return 'shelter';
   if (b.refuge) return 'refuge';
-  if (b.civs.length) return z.id % 3 === 0 ? 'civs' : 'idle';      // a third of them have the scent of the survivors; the rest stand
+  if (b.civs.length) return z.id % 3 === 0 ? 'civs' : 'idle';
+  if (b.objective === 'take') return z.id % 3 === 0 ? 'living' : 'idle';      // a third of them have the scent of the survivors; the rest stand
   return 'living';
 }
 
@@ -1029,9 +1140,10 @@ function bt_objective_step(b, fx) {
     const was = s.state;
     if (s.state === 'broken') { if (s.morale >= 45) s.state = 'steady'; }
     else s.state = s.morale < 20 ? 'broken' : s.morale < 40 ? 'shaken' : 'steady';
-    if (s.state === 'broken' && was !== 'broken') { s.path = []; b.report.push(`${s.name} broke and is running.`); fx.push({ kind: 'broke', x: s.anchor[0], y: s.anchor[1] }); }
+    if (s.state === 'broken' && was !== 'broken') { s.path = []; b.report.push(`${s.name} ${bt_mine(s) ? 'broke and is running' : 'broke and ran'}.`); fx.push({ kind: 'broke', x: s.anchor[0], y: s.anchor[1] }); }
     if (was === 'broken' && s.state !== 'broken') b.report.push(`${s.name} rallied.`);
   }
+  bt_capture_step(b, fx);
   if (b.refuge) {
     let inside = 0;
     for (const z of b.zeds) if (bt_in_refuge(b, Math.floor(z.x), Math.floor(z.y))) inside++;
@@ -1040,15 +1152,36 @@ function bt_objective_step(b, fx) {
   bt_check_over(b, false);
 }
 
+// A base changes hands when one company has men inside it and nobody else, living or dead, is in there.
+function bt_capture_step(b, fx) {
+  for (const q of b.bases) {
+    let you = 0, rival = 0, dead = 0;
+    for (const m of b.men) if (bt_base_at(b, Math.floor(m.x), Math.floor(m.y)) === q) { if (bt_side_of(b, m) === 'rival') rival++; else you++; }
+    for (const z of b.zeds) if (bt_base_at(b, Math.floor(z.x), Math.floor(z.y)) === q) dead++;
+    const by = !dead && you && !rival ? 'you' : !dead && rival && !you ? 'rival' : null;
+    if (!by || by === q.owner) { q.prog = 0; q.by = null; continue; }
+    if (q.by !== by) { q.by = by; q.prog = 0; }
+    q.prog += BT.DT;
+    if (q.prog >= 4) {
+      const was = q.owner;
+      q.owner = by; q.prog = 0; q.by = null;
+      fx.push({ kind: by === 'you' ? 'saved' : 'taken', x: (q.x0 + q.x1 + 1) / 2, y: (q.y0 + q.y1 + 1) / 2 });
+      b.report.push(by === 'you' ? `You hold ${q.name}${was ? `, taken from ${bt_rival_name(b)}` : ''}.` : `${bt_rival_name(b)} took ${q.name}${was ? ' from you' : ''}.`);
+    }
+  }
+}
+
 function bt_end_turn(b) {
   // squads inside the refuge restock; lures burn out
   for (const s of b.squads) {
     if (!bt_alive(b, s)) continue;
-    if (bt_in_refuge(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1])) && s.ammo < s.ammo_max) {
-      s.ammo = Math.min(s.ammo_max, s.ammo + Math.ceil(s.ammo_max * 0.4));
-      b.report.push(`${s.name} restocked.`);
+    const base = bt_base_at(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1]));
+    const stock = bt_in_refuge(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1])) ? 0.4 : base && base.owner === (s.side || 'you') ? 0.3 : 0;
+    if (stock && s.ammo < s.ammo_max) {
+      s.ammo = Math.min(s.ammo_max, s.ammo + Math.ceil(s.ammo_max * stock));
+      if (bt_mine(s)) b.report.push(`${s.name} restocked.`);
     }
-    if (s.ammo_max && s.ammo === 0) b.report.push(`${s.name} is out of ammunition.`);
+    if (bt_mine(s) && s.ammo_max && s.ammo === 0) b.report.push(`${s.name} is out of ammunition.`);
   }
   for (const l of b.lures) l.turns--;
   b.lures = b.lures.filter((l) => l.turns > 0);
@@ -1063,7 +1196,7 @@ function bt_check_over(b, endOfTurn) {
   const era = BT_ERAS[b.era] || BT_ERAS.modern;
   const lose = (title, text) => { b.over = { victory: false, title, text, summary: bt_summary(b) }; b.phase = 'over'; };
   const win = (title, text) => { b.over = { victory: true, title, text, summary: bt_summary(b) }; b.phase = 'over'; };
-  if (!b.men.length) return lose('Wiped out', 'Nobody in the company is left standing. The dead have the field.');
+  if (!b.men.some((m) => bt_side_of(b, m) === 'you')) return lose('Wiped out', 'Nobody in the company is left standing. The dead have the field.');
   if (b.refuge && b.refuge.integrity <= 0) return lose('Overrun', `The dead got into ${era.refuge} and stayed there. The people inside had nowhere to go.`);
   if (b.objective === 'rescue') {
     const need = Math.ceil(b.civ_total / 2);
@@ -1071,6 +1204,17 @@ function bt_check_over(b, endOfTurn) {
     if (!b.civs.length && b.saved >= need) return win('Brought them out', `${b.saved} of ${b.civ_total} ${era.survivors} made it out.`);
     if (endOfTurn && b.turn >= b.turns) return b.saved >= need ? win('Brought them out', `${b.saved} of ${b.civ_total} ${era.survivors} made it out before the way closed.`)
       : lose('Out of time', `The way out closed with ${b.saved} of ${b.civ_total} ${era.survivors} safe.`);
+  } else if (b.objective === 'take') {
+    if (!endOfTurn) return;
+    const mine = b.bases.filter((q) => q.owner === 'you').length, theirs = b.bases.filter((q) => q.owner === 'rival').length, n = b.bases.length;
+    // holding every base wins early, but only once it has been held through a whole turn: the other side gets one turn to strike back
+    const all = mine === n ? 'you' : theirs === n ? 'rival' : null, held = all && b.hold_all === all;
+    b.hold_all = all;
+    if (all && !held) b.report.push(all === 'you' ? `Every base is yours. Hold them all through the next turn and the town is won.` : `${bt_rival_name(b)} hold every base. Take one back next turn, or the town is theirs.`);
+    if (held && all === 'you') return win('The town is yours', `Every building worth having is in your hands${b.squads.some((s) => !bt_mine(s) && s.men.length) ? `, and ${bt_rival_name(b)} have nothing` : ''}.`);
+    if (held && all === 'rival') return lose('The town is theirs', `${bt_rival_name(b)} hold every building that mattered.`);
+    if (b.turn >= b.turns) return mine > theirs ? win('The bigger share', `You hold ${mine} of ${n}; ${bt_rival_name(b)} hold ${theirs}.`)
+      : lose(mine === theirs ? 'A stalemate' : 'Outplayed', `You hold ${mine} of ${n}; ${bt_rival_name(b)} hold ${theirs}.${mine === theirs ? ' Nobody can call the town theirs, and you needed to.' : ''}`);
   } else if (endOfTurn && b.turn >= b.turns) {
     return win('The night held', `${cap(era.refuge)} stood until morning, ${Math.round(b.refuge.integrity)}% intact.`);
   }
@@ -1078,9 +1222,14 @@ function bt_check_over(b, endOfTurn) {
 
 function bt_summary(b) {
   const lines = [`Turn ${Math.min(b.turn, b.turns)} of ${b.turns}. The dead destroyed: ${b.kills}.`];
-  for (const s of b.squads) {
+  for (const s of b.squads.filter(bt_mine)) {
     const st = bt_type_stats(b.era, s.type);
     lines.push(`${s.name}: ${s.men.length}/${st.men} standing, ${s.kills} kills${s.men.length ? '' : ' (lost)'}`);
+  }
+  if (b.objective === 'take') {
+    const left = b.squads.filter((s) => !bt_mine(s)).reduce((a, s) => a + s.men.length, 0);
+    lines.push(`${bt_rival_name(b)}: ${b.rival_lost} dead, ${left} left.`);
+    lines.push('Bases: ' + b.bases.map((q) => `${q.letter} ${q.name} (${q.owner === 'you' ? 'yours' : q.owner === 'rival' ? 'theirs' : 'nobody'})`).join(', ') + '.');
   }
   if (b.turned) lines.push(`${b.turned} of your own turned.`);
   if (b.refuge) lines.push(`Refuge: ${Math.round(b.refuge.integrity)}% intact.`);
@@ -1100,7 +1249,7 @@ function bt_visibility(b) {
     }
   };
   for (const s of b.squads) {
-    if (!bt_alive(b, s)) continue;
+    if (!bt_alive(b, s) || !bt_mine(s)) continue;
     const st = bt_type_stats(b.era, s.type), r = (dark ? 5 : 8) + st.sight;
     for (const m of bt_squad_men(b, s)) look(m.x, m.y, r);
   }
@@ -1135,7 +1284,8 @@ function bt_intent(b, z) {
     if (g === 'idle') return null;
     if (g === 'shelter' || g === 'refuge') { key = g; goals = bt_goal_set(b, g); }
     else {
-      const u = g === 'civs' ? b.civs[0] : b.men[0];
+      let u = g === 'civs' ? b.civs[0] : null;
+      if (!u) { let nd = Infinity; for (const m of b.men) { const d = Math.hypot(m.x - z.x, m.y - z.y); if (d < nd) { nd = d; u = m; } } }
       if (!u) return null;
       const k = bt_idx(b, Math.floor(u.x), Math.floor(u.y)); key = 't' + k; goals = [k];
     }
