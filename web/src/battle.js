@@ -7,7 +7,7 @@
 // and their weapons from the era.
 
 const BT = { W: 24, H: 32, DT: 0.1, TURN_TICKS: 100, MAX_ZEDS: 260, SAVE_KEY: 'outbreak.battle.v1', WALK: 1.2, RUN: 2.0 };
-const BTILE = { GRASS: 0, ROAD: 1, FLOOR: 2, WALL: 3, TREE: 4, BRUSH: 5, RUBBLE: 6, FENCE: 7, WATER: 8, DOOR: 9 };
+const BTILE = { GRASS: 0, ROAD: 1, FLOOR: 2, WALL: 3, TREE: 4, BRUSH: 5, RUBBLE: 6, FENCE: 7, WATER: 8, DOOR: 9, WINDOW: 10, BROKEN: 11 };   // a window lets sight and shots through, not people; the dead break it
 
 // Squad archetypes; the era renames them and swaps their weapons (BT_ERAS).
 const BT_TYPES = {
@@ -81,6 +81,17 @@ const BT_BASE_NAMES = {
   modern: ['the pharmacy', 'the depot', 'the clinic', 'the warehouse'], scifi: ['hydroponics', 'the armoury', 'the comms hub', 'the reactor annex'],
 };
 const bt_mine = (s) => s.side !== 'rival';
+// Scouts that have stood still for two seconds in brush or indoors are set up: they shoot farther and straighter,
+// and nobody notices them until they are close.
+function bt_settled(b, s) {
+  if (!s || s.type !== 'scout' || s.moving || s.still < 2 || s.state === 'broken') return false;
+  const t = bt_tile(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1]));
+  return t === BTILE.BRUSH || bt_indoor(t);
+}
+function bt_hidden(b, u) {
+  if (u.kind !== 'man') return false;
+  return bt_settled(b, bt_squad(b, u.squad));                         // the squad is dug in where it stopped
+}
 const bt_side_of = (b, m) => { const s = bt_squad(b, m.squad); return s ? (s.side || 'you') : 'you'; };
 function bt_rival_name(b) { const f = CONTENT.eras[b.era].factions[b.cfg.rivals]; return f ? f[0] : 'The rivals'; }
 
@@ -120,6 +131,8 @@ function bt_cost(b, k, who) {
   const t = b.tiles[k];
   if (t === BTILE.WALL || t === BTILE.TREE || t === BTILE.WATER) return Infinity;
   if (bt_has_barricade(b, k)) return who === 'z' ? 14 : Infinity;
+  if (t === BTILE.WINDOW) return who === 'z' ? 10 : Infinity;
+  if (t === BTILE.BROKEN) return who === 'h' ? 3 : 2;               // climbing through what is left of it
   if (t === BTILE.FENCE) return who === 'h' ? 3 : (b.swarm ? 2.5 : Infinity);
   if (t === BTILE.BRUSH || t === BTILE.RUBBLE) return 1.6;
   return 1;
@@ -134,7 +147,7 @@ function bt_passable(b, x, y, who) {
   const tx = Math.floor(x), ty = Math.floor(y);
   if (!bt_in(b, tx, ty)) return false;
   const k = bt_idx(b, tx, ty);
-  if (bt_has_barricade(b, k)) return false;
+  if (bt_has_barricade(b, k) || b.tiles[k] === BTILE.WINDOW) return false;
   return bt_cost(b, k, who) !== Infinity;
 }
 
@@ -206,6 +219,19 @@ function bt_building(b, x0, y0, x1, y1, doors) {
   bt_rect(b, x0, y0, x1, y1, BTILE.WALL);
   bt_rect(b, x0 + 1, y0 + 1, x1 - 1, y1 - 1, BTILE.FLOOR);
   for (const [x, y] of doors) b.tiles[bt_idx(b, x, y)] = BTILE.DOOR;
+}
+// Windows along a building's walls: never on a corner, never beside a door, about one wall tile in three.
+function bt_windows(b, x0, y0, x1, y1) {
+  const spots = [];
+  for (let x = x0 + 1; x < x1; x++) spots.push([x, y0], [x, y1]);
+  for (let y = y0 + 1; y < y1; y++) spots.push([x0, y], [x1, y]);
+  for (const [x, y] of spots) {
+    if (b.tiles[bt_idx(b, x, y)] !== BTILE.WALL || bt_rand(b) > 0.34) continue;
+    if (DIRS8.some(([dx, dy]) => [BTILE.DOOR, BTILE.WINDOW].includes(bt_tile(b, x + dx, y + dy)))) continue;
+    if (x <= 0 || y <= 0 || x >= b.w - 1 || y >= b.h - 1) continue;
+    b.tiles[bt_idx(b, x, y)] = BTILE.WINDOW;
+    b.windows[bt_idx(b, x, y)] = b.refuge && x >= b.refuge.x0 - 1 && x <= b.refuge.x1 + 1 && y >= b.refuge.y0 - 1 && y <= b.refuge.y1 + 1 ? 70 : 25;   // the refuge's are shuttered
+  }
 }
 function bt_free(b, x0, y0, x1, y1) {
   for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
@@ -286,9 +312,10 @@ function bt_generate(b) {
     const px = bt_int(b, 1, W - 4), py = bt_int(b, 3, H - 12);
     for (let y = py; y < py + 2; y++) for (let x = px; x < px + 3; x++) if (b.tiles[bt_idx(b, x, y)] === BTILE.GRASS && !bt_reserved(b, x, y)) b.tiles[bt_idx(b, x, y)] = BTILE.WATER;
   }
-  // nothing planted in front of a door
+  for (const q of b.buildings) if (!b.house || q[0] + 1 !== b.house.x0 || q[1] + 1 !== b.house.y0) bt_windows(b, q[0], q[1], q[2], q[3]);
+  // nothing planted in front of a door or a window
   for (let k = 0; k < b.tiles.length; k++) {
-    if (b.tiles[k] !== BTILE.DOOR) continue;
+    if (b.tiles[k] !== BTILE.DOOR && b.tiles[k] !== BTILE.WINDOW) continue;
     const x = k % W, y = (k - x) / W;
     for (const [dx, dy] of DIRS4) {
       const nx = x + dx, ny = y + dy;
@@ -357,7 +384,7 @@ function bt_new(cfg) {
   const b = {
     v: 1, cfg: Object.assign({}, cfg, { seed }), seed, rng: (seed ^ 0xBA77E) >>> 0 || 1, era: cfg.era, preset: cfg.zombies, objective: cfg.objective,
     w: BT.W, h: BT.H, turn: 1, turns: obj.turns, t: 0, phase: 'plan', uid: 1, swarm: !!prof.swarm,
-    squads: [], men: [], zeds: [], civs: [], corpses: [], noises: [], lures: [], barricades: {}, barricades_left: 4,
+    squads: [], men: [], zeds: [], civs: [], corpses: [], noises: [], lures: [], barricades: {}, windows: {}, barricades_left: 4,
     pending: [], wave: null, kills: 0, lost: 0, turned: 0, saved: 0, civ_lost: 0, civ_total: 0, report: [], over: null, refuge: null, house: null, extract_y: null, bases: [], rival_lost: 0, hold_all: null,
   };
   bt_generate(b);
@@ -495,7 +522,7 @@ function bt_seed_dead(b) {
 // What comes next turn, and from where: shown to the player while they plan.
 function bt_plan_wave(b) {
   if (b.turn > b.turns) { b.wave = null; return; }
-  const k = b.turn, base = b.objective === 'hold' ? 6 + 3.6 * k : b.objective === 'take' ? 2 + 1.2 * k : 3 + 1.8 * k;
+  const k = b.turn, base = b.objective === 'hold' ? 5.5 + 3.2 * k : b.objective === 'take' ? 2 + 1.2 * k : 3 + 1.8 * k;
   let count = Math.max(1, Math.round(base * bt_mult(b)));
   if (b.objective === 'hold' && k === b.turns - 1) count = Math.round(count * 1.6);       // the last big push before dawn
   const prof = bt_profile(b);
@@ -823,18 +850,21 @@ function bt_men_step(b, grid, fx) {
       }
       if (broken || s.stance !== 'fire' || st.range <= 0 || s.ammo <= 0 || m.cd > 0 || runningNow) return;
       if (st.setup && s.still < st.setup) return;
-      const reach = Math.min(st.range, (dark ? 5 : 8) + st.sight);                  // nobody shoots what they cannot see
+      const sniping = bt_settled(b, s);
+      const reach = Math.min(st.range + (sniping ? 3 : 0), (dark ? 5 : 8) + st.sight + (sniping ? 3 : 0));     // nobody shoots what they cannot see
       const cand = bt_near_zeds(b, grid, m.x, m.y, reach);
-      for (const e of foes) { const d = Math.hypot(e.x - m.x, e.y - m.y); if (d <= reach) cand.push([d, e]); }
+      for (const e of foes) { const d = Math.hypot(e.x - m.x, e.y - m.y); if (d <= reach && (d <= 3 || !bt_hidden(b, e))) cand.push([d, e]); }
       if (foes.length) cand.sort((p, q) => p[0] - q[0] || p[1].id - q[1].id);
       let target = null;
       for (let c = 0; c < cand.length && c < 5; c++) if (bt_los(b, m.x, m.y, cand[c][1].x, cand[c][1].y)) { target = cand[c][1]; break; }
       if (!target) return;
       s.ammo--;
       m.cd = st.rate * (0.85 + bt_rand(b) * 0.3);
-      let acc = st.acc * (s.moving ? 0.6 : 1) * (shaken ? 0.8 : 1) * (dark ? 0.85 : 1) * (1 - 0.45 * Math.hypot(target.x - m.x, target.y - m.y) / st.range);
+      let acc = st.acc * (s.moving ? 0.6 : 1) * (shaken ? 0.8 : 1) * (dark ? 0.85 : 1) * (1 - 0.45 * Math.hypot(target.x - m.x, target.y - m.y) / reach);
+      if (sniping) acc = Math.min(0.92, acc * 1.4);
       const tt = bt_tile(b, Math.floor(target.x), Math.floor(target.y));
       if (tt === BTILE.BRUSH || tt === BTILE.RUBBLE) acc *= 0.75;
+      if (target.kind === 'man' && bt_indoor(tt) && !bt_indoor(bt_tile(b, Math.floor(m.x), Math.floor(m.y)))) acc *= 0.6;   // behind a wall, at a window
       const hit = bt_rand(b) < acc;
       let ix = target.x, iy = target.y;
       if (!hit) { ix += (bt_rand(b) - 0.5) * 1.6; iy += (bt_rand(b) - 0.5) * 1.6; }
@@ -976,6 +1006,7 @@ function bt_perceive(b, z, prof, dark) {
   for (const u of b.men.concat(b.civs)) {
     const d = Math.hypot(u.x - z.x, u.y - z.y);
     if (d >= bd) continue;
+    if (d > 2.5 && bt_hidden(b, u)) continue;                         // a hidden sniper is noticed only up close
     if (d <= smell || (d <= sight && bt_los(b, z.x, z.y, u.x, u.y))) { best = u; bd = d; }
   }
   if (best) {
@@ -1044,7 +1075,7 @@ function bt_zeds_step(b, grid, fx) {
     if (z.dash > 0) speed *= 4;
     speed *= bt_speed_factor(b, z.x, z.y, 'z');
     let dest = null;
-    if (target && Math.hypot(target.x - z.x, target.y - z.y) < 3 && bt_los(b, z.x, z.y, target.x, target.y)) dest = [target.x, target.y];
+    if (target && Math.hypot(target.x - z.x, target.y - z.y) < 3 && bt_clear_line(b, z, target)) dest = [target.x, target.y];     // not through glass: that takes the long way, or breaking it
     else {
       let key, goals;
       if (target) { const k = bt_idx(b, Math.floor(target.x), Math.floor(target.y)); key = 't' + k; goals = [k]; }
@@ -1070,6 +1101,15 @@ function bt_zeds_step(b, grid, fx) {
         const nx = bt_descend(b, f, z.x, z.y, 'z');
         if (nx) {
           const nk = bt_idx(b, nx[0], nx[1]);
+          if (b.tiles[nk] === BTILE.WINDOW) {                            // smash the window in
+            if (z.cd <= 0) {
+              z.cd = 1;
+              b.windows[nk] = (b.windows[nk] === undefined ? 25 : b.windows[nk]) - (sp.flags.includes('breaker') ? 16 : 4) * (prof.swarm ? 2 : 1);
+              fx.push({ kind: 'thump', x: nx[0] + 0.5, y: nx[1] + 0.5 });
+              if (b.windows[nk] <= 0) { delete b.windows[nk]; b.tiles[nk] = BTILE.BROKEN; bt_invalidate(b); fx.push({ kind: 'glass', x: nx[0] + 0.5, y: nx[1] + 0.5 }); }
+            }
+            continue;
+          }
           if (bt_has_barricade(b, nk)) {                                // pile on the barricade
             if (z.cd <= 0) {
               z.cd = 1;
@@ -1095,6 +1135,13 @@ function bt_zeds_step(b, grid, fx) {
       if (bt_passable(b, z.x + ux * push, z.y + uy * push, 'z')) { z.x += ux * push; z.y += uy * push; }
     }
   }
+}
+
+// Can a zombie walk straight from u to v? (Sight is not enough: a window lets it see, not pass.)
+function bt_clear_line(b, u, v) {
+  const n = Math.ceil(Math.hypot(v.x - u.x, v.y - u.y) / 0.25);
+  for (let i = 1; i <= n; i++) if (!bt_passable(b, u.x + (v.x - u.x) * i / n, u.y + (v.y - u.y) * i / n, 'z')) return false;
+  return true;
 }
 
 function bt_goal_set(b, key) {

@@ -14,8 +14,8 @@ function el(tag, cls, content) {
 const btn = (cls, label, onclick) => { const b = el('button', cls, label); b.type = 'button'; if (onclick) b.addEventListener('click', onclick); return b; };
 const MONO = '"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace';
 const SQUAD_COL = ['#d99a2b', '#55b3c4', '#c79bf2', '#7fd18b', '#e2573f'];
-const TILE_COL = { 0: '#16241a', 1: '#262d30', 2: '#1b2225', 3: '#394249', 4: '#0f2016', 5: '#12271a', 6: '#2a2724', 7: '#16241a', 8: '#0d2a40', 9: '#3a2c1a' };
-const TILE_SPR = { 0: ['grass_a', 'grass_b'], 1: ['road'], 2: ['floor_a', 'floor_b'], 3: ['wall'], 4: ['tree', 'tree_b'], 5: ['brush'], 6: ['rubble'], 7: ['fence'], 8: ['water'], 9: ['floor_a'] };
+const TILE_COL = { 0: '#16241a', 1: '#262d30', 2: '#1b2225', 3: '#394249', 4: '#0f2016', 5: '#12271a', 6: '#2a2724', 7: '#16241a', 8: '#0d2a40', 9: '#3a2c1a', 10: '#394249', 11: '#2a2724' };
+const TILE_SPR = { 0: ['grass_a', 'grass_b'], 1: ['road'], 2: ['floor_a', 'floor_b'], 3: ['wall'], 4: ['tree', 'tree_b'], 5: ['brush'], 6: ['rubble'], 7: ['fence'], 8: ['water'], 9: ['floor_a'], 10: ['wall'], 11: ['floor_a'] };
 
 let b = null, sel = null, mode = null, speed = 2, playing = false, lastT = 0, acc = 0, prev = new Map(), fxs = [], decals = [], vis = null, report = [], sndAt = 0;
 let cv = null, ctx = null, view = { ox: 0, oy: 0, ts: 16 }, drag = null, raf = 0, setupCfg = null, ro = null;
@@ -67,7 +67,7 @@ function setup() {
 }
 
 // The company: the standard one for the objective until the player changes it, then theirs (kept between battles).
-const ROLE = { line: 'Steady fire at range.', shield: 'Holds a doorway in close combat; builds barricades.', heavy: 'Huge firepower once set up. Loud, and hungry for ammunition.', scout: 'Fast and quiet, sees farther; throws lures.' };
+const ROLE = { line: 'Steady fire at range.', shield: 'Holds a doorway in close combat; builds barricades.', heavy: 'Huge firepower once set up. Loud, and hungry for ammunition.', scout: 'Fast and quiet, sees farther, throws lures. Set up in cover, a hidden sniper.' };
 const companyOf = () => (setupCfg.forces ? setupCfg.forces.slice() : BT_OBJECTIVES[setupCfg.objective].forces.slice());
 function armyBuilder(w, render) {
   const era = BT_ERAS[setupCfg.era] || BT_ERAS.modern, forces = companyOf(), spent = bt_forces_cost(forces), left = BT_ARMY.budget - spent;
@@ -166,7 +166,7 @@ function renderPanel() {
     const pips = '●'.repeat(s.men.length) + '○'.repeat(Math.max(0, st.men - s.men.length));
     c.append(el('div', 'bt-cname', [el('span', 'bt-dot'), s.call || s.name]), el('div', 'bt-ctype', BT_ERAS[b.era].names[s.type]), el('div', 'bt-pips', pips),
       s.ammo_max ? bar(s.ammo / s.ammo_max, '#d99a2b') : el('div', 'bt-bar none'), bar(s.morale / 100, s.state === 'broken' ? '#e2573f' : s.state === 'shaken' ? '#d4a52a' : '#58b878'),
-      el('div', 'bt-cstate', `${stateWord(s)}${s.path.length ? ' · moving' : ''}${s.ability ? ' · ' + s.ability.kind : ''}`));
+      el('div', 'bt-cstate', `${stateWord(s)}${bt_settled(b, s) ? ' · hidden' : ''}${s.path.length ? ' · moving' : ''}${s.ability ? ' · ' + s.ability.kind : ''}`));
     c.querySelector('.bt-dot').style.background = SQUAD_COL[i % SQUAD_COL.length];
     c.addEventListener('click', () => { if (playing) return; sel = s.id; mode = null; renderPanel(); });
     cards.append(c);
@@ -196,7 +196,7 @@ function renderPanel() {
     p.append(row2);
     p.append(el('div', 'bt-hint', mode === 'ability' ? (kind === 'lure' ? 'Tap where the lure should go (within 10 tiles). The dead go to the noise for two turns.' : 'Tap a tile within 3 tiles of where the squad stops. They need 4 quiet seconds there to build it.')
       : s.state === 'broken' ? 'Broken: they run for safety and ignore orders until they rally.'
-      : `${cap(era.weapons[s.type])}${bt_type_stats(b.era, s.type).range ? '' : ', close combat only'}. Tap the map to move them, or drag a route from the squad.`));
+      : `${cap(era.weapons[s.type])}${bt_type_stats(b.era, s.type).range ? '' : ', close combat only'}. ${s.type === 'scout' ? ' Left still in brush or a building, they snipe unseen.' : ''} Tap the map to move them, or drag a route from the squad.`));
   }
   if (report.length) p.append(el('div', 'bt-feed', report.slice(-4).map((l) => el('div', null, l))));
   const go = btn('btn main bt-go', `EXECUTE TURN ${b.turn}`, execute);
@@ -242,7 +242,7 @@ function step() {
     else fxs.push(f);
     if (f.kind === 'scream') audio_play('scream');
     if (f.kind === 'turn' || f.kind === 'broke') audio_play('stinger');
-    if (f.kind === 'break' || f.kind === 'burst') audio_play('smash');
+    if (f.kind === 'break' || f.kind === 'burst' || f.kind === 'glass') audio_play('smash');
     if (f.kind === 'build' || f.kind === 'saved') audio_play('good');
     if (f.kind === 'taken') audio_play('warn');
   }
@@ -285,6 +285,8 @@ function openMenu() {
     el('div', null, 'Morale falls when men die or the dead swarm a squad. A broken squad runs for safety until it rallies.'),
     el('div', null, 'Red arrows: where the dead you can see are heading. Red edge marks: where the next wave comes in.'),
     el('div', null, 'In the dark you see, and shoot, only five tiles away.'),
+    el('div', null, 'Windows let sight and shots through but not people. Someone behind a window is hard to hit. The dead smash them in; a broken window can be climbed or barricaded.'),
+    el('div', null, 'Scouts that stay still for two seconds in brush or inside a building are set up as snipers: longer range, better aim, and nobody sees them until they are close.'),
     el('div', null, 'Take the town: a base (A to D) is yours after four seconds with your men inside and nobody else, living or dead. Blue outline: yours. Red: theirs. Bases you hold restock your ammunition. Hold all of them through a whole turn to win.'),
   ]));
   const m = el('div', 'menu');
@@ -385,6 +387,15 @@ function draw(now, alpha) {
     const names = TILE_SPR[t], name = names[(x * 7 + y * 13) % names.length];
     if (!UI.sprite(c, b.era, name, px, py, ts)) { c.fillStyle = TILE_COL[t]; c.fillRect(px, py, ts + 0.5, ts + 0.5); }
     if (t === BTILE.DOOR) { c.fillStyle = 'rgba(122,85,40,.85)'; c.fillRect(px + ts * .15, py + ts * .15, ts * .7, ts * .7); }
+    else if (t === BTILE.WINDOW) {
+      const hp = b.windows[y * b.w + x];
+      c.fillStyle = 'rgba(140,200,225,.85)'; c.fillRect(px + ts * .18, py + ts * .18, ts * .64, ts * .64);
+      c.strokeStyle = '#2b383d'; c.lineWidth = 1; c.beginPath(); c.moveTo(px + ts / 2, py + ts * .18); c.lineTo(px + ts / 2, py + ts * .82); c.moveTo(px + ts * .18, py + ts / 2); c.lineTo(px + ts * .82, py + ts / 2); c.stroke();
+      if (hp !== undefined && hp < 20) { c.strokeStyle = '#e2573f'; c.beginPath(); c.moveTo(px + ts * .25, py + ts * .3); c.lineTo(px + ts * .7, py + ts * .75); c.stroke(); }
+    } else if (t === BTILE.BROKEN) {
+      c.fillStyle = 'rgba(140,200,225,.6)';
+      for (const [a, d] of [[.2, .3], [.6, .25], [.45, .65], [.75, .7]]) c.fillRect(px + a * ts, py + d * ts, ts * .1, ts * .1);
+    }
   }
   if (b.extract_y !== null) { c.fillStyle = 'rgba(88,184,120,.16)'; c.fillRect(P(0), Q(b.extract_y), b.w * ts, (b.h - b.extract_y) * ts); }
   // blood
@@ -445,10 +456,12 @@ function draw(now, alpha) {
     const col = SQUAD_COL[i % SQUAD_COL.length];
     for (const m of bt_squad_men(b, s)) {
       const [x, y] = pos(m, alpha), sz = ts * .82;
+      c.globalAlpha = bt_hidden(b, m) ? 0.55 : 1;
       c.strokeStyle = col; c.lineWidth = s.id === sel && !playing ? 2.2 : 1.4; c.beginPath(); c.ellipse(P(x), Q(y) + ts * .3, ts * .32, ts * .12, 0, 0, 7); c.stroke();
       if (!UI.sprite(c, b.era, 'soldier', P(x) - sz / 2, Q(y) - sz / 2, sz)) { c.fillStyle = col; c.beginPath(); c.arc(P(x), Q(y), ts * .28, 0, 7); c.fill(); }
       if (m.hp < m.max_hp) { c.fillStyle = '#000'; c.fillRect(P(x) - ts * .35, Q(y) - ts * .5, ts * .7, 2); c.fillStyle = '#58b878'; c.fillRect(P(x) - ts * .35, Q(y) - ts * .5, ts * .7 * Math.max(0, m.hp / m.max_hp), 2); }
       if (m.bitten >= 0) { c.fillStyle = '#6a9a32'; c.beginPath(); c.arc(P(x) + ts * .3, Q(y) - ts * .3, ts * .11, 0, 7); c.fill(); }
+      c.globalAlpha = 1;
     }
     if (s.men.length && s.state !== 'steady') {
       c.font = `bold ${Math.max(9, Math.floor(ts * .55))}px ${MONO}`; c.textAlign = 'center'; c.textBaseline = 'middle';

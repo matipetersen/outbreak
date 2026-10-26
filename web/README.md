@@ -80,6 +80,11 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
   head-shot-only killing, the dead rising, fences that only the swarm climbs, the sun-shy dead that hide in buildings by
   day and burn in the open, spores in closed rooms, mutations that get worse each turn, and the specials (brutes break
   barricades, screamers call the horde, bloaters burst, leapers pounce, clickers hunt by sound).
+* **Windows**: buildings have them (not the survivors' boarded-up house; the refuge's are shuttered and stronger). Sight and
+  shots go through, people do not; someone inside behind one is hard to hit. The dead smash them in, and a broken window
+  can be climbed through or barricaded.
+* **Snipers**: scouts that stay still for two seconds in brush or inside a building are set up: longer range, better aim,
+  and nobody (the dead or the rivals) notices them until close. Moving gives them away.
 * **What you see while planning**: the next wave and where it comes in (red marks on the edge), and a red arrow on every
   zombie you can see, pointing where it is going.
 
