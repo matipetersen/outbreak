@@ -19,10 +19,10 @@ const allRandom = (extra = {}) => Object.assign({ era: 'random', zombies: 'rando
   const eras = new Set(); for (let i = 0; i < 80; i++) eras.add(OB.resolve_config(Object.assign(OB.default_config(), allRandom()))[0].era);
   assert.strictEqual(eras.size, Object.keys(OB.CONTENT.eras).length);
 }
-// only the random fields change; shared mode is never drawn
+// only the random fields change
 {
-  const [c, drawn] = OB.resolve_config(Object.assign(OB.default_config(), { era: 'medieval', zombies: 'random', scenario: 'dash', origin: 'guard', mode: 'shared', seed: 3 }));
-  assert.deepStrictEqual([c.era, c.scenario, c.origin, c.mode], ['medieval', 'dash', 'guard', 'shared']);
+  const [c, drawn] = OB.resolve_config(Object.assign(OB.default_config(), { era: 'medieval', zombies: 'random', scenario: 'dash', origin: 'guard', mode: 'living', seed: 3 }));
+  assert.deepStrictEqual([c.era, c.scenario, c.origin, c.mode], ['medieval', 'dash', 'guard', 'living']);
   assert.deepStrictEqual(drawn, ['zombies']); assert.notStrictEqual(c.zombies, 'random');
 }
 // unknown values still fail

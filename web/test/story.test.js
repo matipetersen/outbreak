@@ -64,7 +64,7 @@ console.log('story: the world remembers, companions ask for one thing, and the D
 }
 { // people have names and voices, the greeting reads your state, the news is about the world
   const { OB, make } = require('./helpers');
-  const g = make({ scenario: 'dash', seed: 3 }); g.player.infected = false;
+  const g = make({ scenario: 'extraction', seed: 3 }); g.player.infected = false;
   const mk = (role, uid) => ({ kind: 'human', uid, name: role, role, faction: 'enclave', x: 1, y: 1, hp: 30, max_hp: 30 });
   const a = mk('healer', 1001), b = mk('healer', 1002);
   assert.notStrictEqual(OB.dlg_persona(a).tag, OB.dlg_persona(b).tag); assert(OB.dlg_title(g, a).endsWith(', healer'));

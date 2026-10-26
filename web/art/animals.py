@@ -168,6 +168,25 @@ FOX = [
     "................",
 ]
 
+HORSE = [
+    "................",
+    "...........kk...",
+    "..........kddk..",
+    ".........kdffek.",
+    "........kdffffnk",
+    "........kdfkkkk.",
+    "..kkkkkkdffk....",
+    ".kdfffffffffk...",
+    "kdfffffffffffk..",
+    "kdffffffffffFk..",
+    "kd.kFFFFFFFFk...",
+    "kd.kfkkkkkfkk...",
+    "...kfk...kfk....",
+    "...kfk...kfk....",
+    "...kak...kak....",
+    "................",
+]
+
 PALETTES = {
     "rabbit": {"k": "#2b2018", "f": "#a8896a", "F": "#e9dfcf", "e": "#1a1a1a", "n": "#e89aa0"},
     "deer": {"k": "#2b1c12", "f": "#a8693a", "F": "#e6cfa0", "d": "#6a3f22", "e": "#1a1a1a", "n": "#3a2a22", "a": "#d7c7a0"},
@@ -177,8 +196,9 @@ PALETTES = {
     "cat": {"k": "#2b1c12", "f": "#e29a45", "F": "#f6dcb0", "d": "#a8601f", "e": "#7aff9a", "n": "#e89aa0"},
     "crow": {"k": "#0c0d14", "f": "#262a3a", "e": "#e8e8f0", "b": "#d6c47a"},
     "fox": {"k": "#2b1408", "f": "#dd6a2c", "F": "#f4e4d0", "d": "#3a2418", "e": "#1a1a1a", "n": "#16100c", "t": "#ffffff"},
+    "horse": {"k": "#22150c", "f": "#8a5630", "F": "#c39566", "d": "#2e1c10", "e": "#0e0e0e", "n": "#3a2416", "a": "#141010"},
 }
-SHAPES = {"rabbit": RABBIT, "deer": DEER, "boar": BOAR, "wolf": WOLF, "dog": DOG, "cat": CAT, "crow": CROW, "fox": FOX}
+SHAPES = {"rabbit": RABBIT, "deer": DEER, "boar": BOAR, "wolf": WOLF, "dog": DOG, "cat": CAT, "crow": CROW, "fox": FOX, "horse": HORSE}
 
 # the station's version: the same animals, with lit eyes and a faint metallic tint (strays that lived off the hydroponics)
 SCIFI_PAL = {
@@ -190,6 +210,7 @@ SCIFI_PAL = {
     "cat": {"e": "#ff6af0", "f": "#7a8aa8", "F": "#cdd8ea", "d": "#4a566e"},
     "crow": {"e": "#33e0ff", "f": "#1f2a3a", "b": "#7ad8ff"},
     "fox": {"e": "#33e0ff", "f": "#a860e0", "F": "#e8d8ff", "d": "#2a1a40", "t": "#6af0ff"},
+    "horse": {"e": "#6af0ff", "f": "#6a7486", "F": "#a8b2c4", "d": "#2c3442", "n": "#33e0ff", "a": "#33e0ff"},       # a strider: a walking cargo frame
 }
 
 

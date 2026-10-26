@@ -9,7 +9,7 @@ class Player {
     this.hp = hp; this.max_hp = hp; this.level_id = 'world';
     this.stamina = 100; this.max_stamina = 100; this.fatigue = 0; this.panic = 0; this.max_panic = 100; this.humanity = 70; this.hunger = 0;
     this.xp = 0; this.level = 1; this.perk_points = 0; this.perks = {}; this.coins = 0;
-    this.inventory = []; this.weapon = null; this.armor = null; this.light = null; this.style_xp = {};
+    this.inventory = []; this.weapon = null; this.armor = null; this.light = null; this.shield = null; this.style_xp = {};
     this.infected = false; this.infection_timer = 0; this.bite_limb = ''; this.bite_window = 0; this.lost = [];
     this.bleeding = 0; this.hemorrhage = false; this.fracture = false; this.filter_turns = 0; this.disguise_turns = 0;
     this.sneaking = false; this.sprinting = false; this.light_on = true;

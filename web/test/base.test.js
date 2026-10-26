@@ -15,15 +15,16 @@ const tiles = (lv) => Array.from(lv.tiles);
   assert(/Clear/.test(OB.can_claim(h))); lv.remove_actor(z);
   assert.strictEqual(OB.can_claim(h), ''); assert(OB.claim_base(h)); assert.strictEqual(h.base_id, lv.id); assert(lv.safe);
 }
-{ // costs, limits, workshop unlocks weapon crafting
+{ // costs, limits; a workshop makes weapons faster and sturdier
   const [g, lv] = in_house(); OB.claim_base(g);
   const ws = OB.STRUCTURE_BY_ID.workshop; let [ok, why] = OB.structure_status(g, ws); assert(!ok && /missing/.test(why));
   stock(g, { wood: 12, scrap: 9, cloth: 3 });
   const r = OB.CONTENT.recipes.find((x) => x.id === 'nailbat');
-  assert(/workshop/.test(OB.recipe_status(g, r)[1]));
+  assert(OB.recipe_status(g, r)[0]); assert(OB.recipe_turns(g, r) > r.turns, 'slower away from a workshop');
   const w0 = g.player.count('wood'); assert(OB.build_structure(g, 'workshop')); assert.strictEqual(g.player.count('wood'), w0 - 4);
   assert(tiles(lv).includes(OB.T.WORKSHOP)); assert(!OB.structure_status(g, ws)[0]);
-  assert(OB.recipe_status(g, r)[0]); assert(g.craft('nailbat')); assert(g.player.count('nailbat') >= 1);
+  assert.strictEqual(OB.recipe_turns(g, r), r.turns); assert(g.craft('nailbat')); assert(g.player.count('nailbat') >= 1);
+  assert.strictEqual(g.player.inventory.find((i) => i.id === 'nailbat').dur, g.item_def('nailbat').durability, 'full condition from a workshop');
 }
 { // a barricade is a gate with hit points
   const [g, lv] = in_house(); OB.claim_base(g); stock(g, { wood: 4, scrap: 2 }); assert(OB.build_structure(g, 'barricade'));

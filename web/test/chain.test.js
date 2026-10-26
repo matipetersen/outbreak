@@ -39,6 +39,7 @@ function loot_vault(g, poi) {
 function play_through(era, scenario, seed) {
   const g = make({ era, scenario, seed, origin: 'scholar' });
   quiet(g);
+  if (g.front) { g.front.speed = 0; g.front.pos = -1e9; }                                        // the walk-through skips the walking; the tide gets its own test
   for (const doc of Object.values(g.docs)) {
     fetch_document(g, doc.id);
     for (let i = 0; i < 4; i++) g.read_document(doc.id);
@@ -53,6 +54,13 @@ function play_through(era, scenario, seed) {
   assert(g.pois[g.final_site_id].revealed);
   if (g.scenario.needs_formula) { assert(g.formula_found); assert(g.know.fluency >= g.scenario.formula_fluency); }
   assert(g.requirements_met());
+  if (g.scenario.front) {                                                   // Dash: no siege, just the transport's doors
+    const pad = g.pois[g.pad_id]; OB.gen_near(g, pad.x, pad.y);
+    teleport(g, 'world', g.world.level.free_spot_near(pad.x, pad.y + 1, 3)); g.player.hp = g.player.max_hp = 1e6;
+    g._use_portal(pad.x, pad.y);
+    assert(g.over && g.over.victory, `${era} ${scenario}: ${g.over && g.over.title}`);
+    return;
+  }
   const lv = g.ensure_level(g.pois[g.final_site_id].id + ':0');
   teleport(g, lv.id, lv.free_spot_near(lv.bench[0], lv.bench[1], 1));
   g.player.hp = g.player.max_hp = 1e6;

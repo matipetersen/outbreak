@@ -16,6 +16,7 @@ function can_claim(game) {
   if (lv.kind !== 'interior') return 'A base has to be a building with walls: step inside one.';
   if (game.base_id === lv.id) return 'This is already your base.';
   if (hostiles_in(lv).length) return 'Something is still in here. Clear it first.';
+  { const o = outpost_of_level(game, lv); if (o && o.owner) return `${faction_name(game, o.owner)} hold this place. It is not yours to claim.`; }
   return '';
 }
 
@@ -44,10 +45,23 @@ function _connected(lv, start, goal) {
   return false;
 }
 
+// What you can build with: your pack, and the locker of the base you are standing in.
+const base_have = (game, id) => game.player.count(id) + (in_base(game) ? game.level.stash.filter((i) => i.id === id).reduce((n, i) => n + i.qty, 0) : 0);
+function base_take(game, id, qty) {
+  const p = game.player, own = Math.min(qty, p.count(id));
+  if (own) p.take(id, own);
+  let left = qty - own;
+  for (const it of game.level.stash.filter((i) => i.id === id)) {
+    const k = Math.min(left, it.qty); it.qty -= k; left -= k;
+    if (it.qty <= 0) game.level.stash.splice(game.level.stash.indexOf(it), 1);
+    if (!left) break;
+  }
+}
+
 function structure_status(game, s) {
   if (!in_base(game)) return [false, 'only in your base'];
-  if (_built_count(game.level, s.id) >= s.limit) return [false, 'you have all you need'];
-  const missing = s.cost.filter(([i, q]) => game.player.count(i) < q).map(([i, q]) => `${q}x ${game.item_def(i).name.toLowerCase()}`);
+  if (_built_count(game.level, s.id) >= (s.id === 'cot' && game.saga ? 4 : s.limit)) return [false, 'you have all you need'];
+  const missing = s.cost.filter(([i, q]) => base_have(game, i) < q).map(([i, q]) => `${q}x ${game.item_def(i).name.toLowerCase()}`);
   return missing.length ? [false, 'missing ' + missing.join(', ')] : [true, ''];
 }
 
@@ -73,7 +87,7 @@ function build_structure(game, sid) {
     game.msg('That would block the way through. Build somewhere else.', 'warn');
     return 0;
   }
-  for (const [i, q] of s.cost) p.take(i, q);
+  for (const [i, q] of s.cost) base_take(game, i, q);
   const k = lv.idx(pos[0], pos[1]);
   lv.built[k] = s.id;
   if (s.id === 'barricade') lv.door_hp[k] = BARRICADE_HP;

@@ -7,20 +7,20 @@ function refuses(game) {
   if ((game.rep.enclave || 0) < -30) return 'Word of what you did has reached them. They will not serve you.';
   return '';
 }
-function price_mult(game) {
-  return Math.max(0.7, 1.5 - (game.rep.enclave || 0) / 200 - (game.player.humanity >= 75 ? 0.15 : 0.0));
+function price_mult(game, faction = 'enclave') {
+  return Math.max(0.7, 1.5 - (game.rep[faction] || 0) / 200 - (game.player.humanity >= 75 ? 0.15 : 0.0)) * (faction === 'raiders' ? 1.3 : 1.0) * saga_mod(game, 'price');
 }
-function stock(game) {
+function stock(game, faction = 'enclave') {
   const out = [];
   const ammo = game.item_def(game.era.defaults.ranged).ammo;
   const ids = STOCK.concat(ammo ? [ammo] : []);
-  for (const id of ids) if (game.items[id]) out.push([id, Math.max(1, Math.round(game.item_def(id).value * price_mult(game)))]);
+  for (const id of ids) if (game.items[id]) out.push([id, Math.max(1, Math.round(game.item_def(id).value * price_mult(game, faction)))]);
   return out;
 }
-function buy(game, item_id) {
-  const r = refuses(game);
+function buy(game, item_id, faction = 'enclave') {
+  const r = faction === 'enclave' ? refuses(game) : '';
   if (r) return r;
-  const entry = stock(game).find((s) => s[0] === item_id), d = game.item_def(item_id);
+  const entry = stock(game, faction).find((s) => s[0] === item_id), d = game.item_def(item_id);
   if (!entry) return 'Not for sale.';
   const price = entry[1];
   if (game.player.coins < price) return `You need ${price} ${game.era.coin}.`;

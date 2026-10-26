@@ -11,7 +11,7 @@ const { OB, make } = require('./helpers');
 { // pressure grows with the days, only in endless
   const e = make({ scenario: 'endless', seed: 3 }), c = make({ scenario: 'cure', seed: 3 });
   assert.strictEqual(e.pressure, 1.0); e.clock.turn = 240 * 20; c.clock.turn = 240 * 20;
-  assert(e.pressure > 1.8); assert.strictEqual(c.pressure, 1.0); e.clock.turn = 240 * 400; assert.strictEqual(e.pressure, 3.0);
+  assert(e.pressure > 1.5); assert.strictEqual(c.pressure, 1.0); e.clock.turn = 240 * 400; assert.strictEqual(e.pressure, 2.4);
 }
 { // tougher dead, lifted level cap
   const g = make({ scenario: 'endless', seed: 3 });

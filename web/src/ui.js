@@ -249,7 +249,7 @@ function drawActor(a, px, py, ts) {
   if (sprOn() && (a.kind !== 'animal' || actorSprite(a))) return drawActorSprite(a, px, py, ts);
   const c = ctx, cx = px + ts / 2, cy = py + ts / 2;
   let fill, ink = '#fff', ring = null;
-  if (a.kind === 'player') { fill = '#efe8d2'; ink = '#0d1214'; ring = '#d99a2b'; }
+  if (a.kind === 'player') { fill = '#efe8d2'; ink = '#0d1214'; ring = game.riding ? '#8a5630' : '#d99a2b'; }
   else if (a.kind === 'zombie') { fill = ZCOL[a.special] || '#b94a3c'; if (a.flags.includes('boss')) ring = '#fff'; if (a.state === 'dormant') c.globalAlpha = 0.7; }
   else if (a.kind === 'animal') { fill = a.pet ? '#c79bf2' : a.stray ? '#68c0c8' : a.species === 'wolf' ? '#8a8f9a' : a.state === 'charge' ? '#c47a3a' : '#7aa35a'; ink = '#0d1214'; }
   else { fill = a.hostile ? '#c9992a' : '#55b3c4'; ink = '#0d1214'; }
@@ -289,6 +289,10 @@ function drawActorSprite(a, px, py, ts) {
   if (a.kind === 'player') { c.strokeStyle = '#d99a2b'; c.lineWidth = 2; c.beginPath(); c.ellipse(cx, py + ts * .86, ts * .36, ts * .14, 0, 0, 7); c.stroke(); }
   else if (a.kind !== 'zombie') { c.fillStyle = a.hostile ? 'rgba(226,87,63,.55)' : 'rgba(85,179,196,.5)'; c.beginPath(); c.ellipse(cx, py + ts * .86, ts * .34, ts * .12, 0, 0, 7); c.fill(); }
   if (a.kind === 'zombie' && a.state === 'dormant') c.globalAlpha = 0.7;
+  if (a.kind === 'player' && game.riding && activeSprites().map.a_horse) {         // in the saddle: the horse, and you on it
+    const hs = ts * 1.25; spr('a_horse', cx - hs / 2, cy - hs / 2 + ts * .08, hs);
+    spr(actorSprite(a), cx - ts * .38, cy - ts * .78, ts * .76);
+  } else
   spr(actorSprite(a), cx - sz / 2, cy - sz / 2 - (sz - ts) * .1, sz);
   c.globalAlpha = 1;
   if (a.kind === 'zombie' && a.flags.includes('boss')) { c.strokeStyle = 'rgba(255,255,255,.8)'; c.lineWidth = 1.5; c.beginPath(); c.arc(cx, cy, ts * .52, 0, 7); c.stroke(); }
@@ -388,22 +392,26 @@ function drawMarkers(fr) {
   drawThreats(fr);
   if (game.level.kind !== 'overworld') return;
   const { ox, oy, ts } = view, m = 22;
-  for (const poi of Object.values(game.pois)) {
-    if (!poi.revealed || poi.kind === 'breach') continue;
-    let col = null;
-    if (poi.lead && poi.component && game.player.count(poi.component) === 0) col = '#55b3c4';
-    else if (poi.id === game.final_site_id) col = '#b87ad0';
-    if (!col) continue;
-    const px = ox + (poi.x + .5) * ts, py = oy + (poi.y + .5) * ts;
-    if (px > m && px < W - m && py > fr.top + m && py < fr.bottom - m) continue;
+  const arrow = (x, y, col, letter) => {
+    const px = ox + (x + .5) * ts, py = oy + (y + .5) * ts;
+    if (px > m && px < W - m && py > fr.top + m && py < fr.bottom - m) return;
     const cx = Math.min(W - m, Math.max(m, px)), cy = Math.min(fr.bottom - m, Math.max(fr.top + m, py));
     const ang = Math.atan2(py - cy, px - cx);
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
     ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -9); ctx.lineTo(-8, 9); ctx.closePath(); ctx.fill();
     ctx.restore();
     ctx.fillStyle = col; ctx.font = `bold 11px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(POI_LETTER[poi.kind] || 'H', cx - Math.cos(ang) * 20, cy - Math.sin(ang) * 20);
+    ctx.fillText(letter, cx - Math.cos(ang) * 20, cy - Math.sin(ang) * 20);
+  };
+  for (const poi of Object.values(game.pois)) {
+    if (!poi.revealed || poi.kind === 'breach') continue;
+    let col = null;
+    if (poi.lead && poi.component && game.player.count(poi.component) === 0) col = '#55b3c4';
+    else if (poi.id === game.final_site_id && !game.saga) col = '#b87ad0';
+    if (col) arrow(poi.x, poi.y, col, POI_LETTER[poi.kind] || 'H');
   }
+  for (const [x, y, col, letter] of saga_markers(game)) arrow(x, y, col, letter);
+  if (game.base_id && game.saga) { const b = saga_base_poi(game); if (b) arrow(b.x, b.y, '#58b878', 'B'); }
 }
 
 function frame() {
@@ -433,13 +441,7 @@ function liveFrame() {
 function startLive() { if (game && game.cfg.mode !== 'normal') { game.start_live(Date.now()); queued = null; } }
 
 // ---------------------------------------------------------------- HUD, log, alerts
-// in the shared world the calendar day is real time; the hour is still your own clock
-function stampOf(g) {
-  const c = g.clock;
-  if (!g.shared) return c.stamp();
-  const h = Math.floor(c.hour), m = Math.floor((c.hour - h) * 60);
-  return `Day ${game_day(g)} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
+function stampOf(g) { return g.clock.stamp(); }
 
 const pct = (v, m) => Math.max(0, Math.min(100, (v / Math.max(1, m)) * 100));
 const setBar = (id, v, m, color) => { const f = $(id); f.style.width = pct(v, m) + '%'; f.style.background = color; };
@@ -455,8 +457,9 @@ function updateHud() {
   setBar('#b-noi', g.heat, 100, g.heat > 60 ? '#e2573f' : g.heat > 30 ? '#d99a2b' : '#6b7a74');
   const chips = $('#chips'); chips.innerHTML = '';
   const add = (t, cls) => chips.append(el('span', 'chip ' + (cls || ''), t));
+  { const m = mount_current(g); if (m) { const ch = el('button', 'chip ally', `${g.riding ? 'Riding ' : ''}${m.name} ${m.hp}/${m.max_hp}${g.riding && p.sprinting ? ' · gallop' : ''}`); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openMount(m); }); chips.append(ch); } }
   { const pt = pets_current(g); if (pt) { const ch = el('button', 'chip ally', `${pt.name} ${pt.hp}/${pt.max_hp}${pets_hunger(g, pt) !== 'fed' ? ' · ' + pets_hunger(g, pt) : ''}`); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openPet(pt); }); chips.append(ch); } }
-  { const ally = comp_current(g); if (ally) { const ch = el('button', 'chip ally', `${ally.name} ${ally.hp}/${ally.max_hp}${ally.state === 'wait' ? ' · waiting' : ''}`); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openCompanion(ally); }); chips.append(ch); const oc = el('button', 'chip ally', comp_order_of(ally) ? `Order: ${COMP_ORDERS[ally.order][0]}` : 'Orders'); oc.type = 'button'; oc.addEventListener('click', () => { if (!modal && game && !game.over) openOrders(); }); chips.append(oc); } else if (g.fallen_allies.length) add(`Alone · lost ${g.fallen_allies[g.fallen_allies.length - 1][0]}`, 'info'); }
+  { const ally = comp_current(g); if (ally) { const ch = el('button', 'chip ally', `${ally.name} ${ally.hp}/${ally.max_hp}${ally.infected ? ' · bitten' : ''}${ally.state === 'wait' ? ' · waiting' : ''}`); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openCompanion(ally); }); chips.append(ch); const oc = el('button', 'chip ally', comp_order_of(ally) ? `Order: ${COMP_ORDERS[ally.order][0]}` : 'Orders'); oc.type = 'button'; oc.addEventListener('click', () => { if (!modal && game && !game.over) openOrders(); }); chips.append(oc); } else if (g.fallen_allies.length) add(`Alone · lost ${g.fallen_allies[g.fallen_allies.length - 1][0]}`, 'info'); }
   if (p.infected) add(`INFECTED ${p.infection_timer >= 20 ? Math.round(p.infection_timer / 10) + 'h' : p.infection_timer + ' turns'}`, 'danger');
   if (p.bleeding) add('Bleeding', 'danger');
   if (p.fracture) add('Broken leg', 'warn');
@@ -476,7 +479,9 @@ function updateHud() {
   if (g.live && g.sleep_left > 0) add('Asleep', 'info');
   if (g.cfg.needs && p.hunger > 50) add('Hungry', p.hunger > 80 ? 'danger' : 'warn');
   if (g.final) add(g.final.exit ? `GET OUT: ${g.final.exit_name}` : `HOLD OUT ${g.final.turns_left}`, 'danger');
-  if (g.ring && g.ring.active) add('Tide closing', 'warn');
+  if (g.ring && g.ring.active && !g.front) add('Tide closing', 'warn');
+  if (g.front) { const gap = front_gap(g); add(front_status(g), g.front.depart || gap < 6 ? 'danger' : gap < 20 ? 'warn' : 'info'); }
+  if (g.saga) { const e = g.saga.events.find((x) => x.started && x.known !== false), ch = el('button', 'chip ' + (e ? 'warn' : 'info'), e ? SAGA_EVENTS[e.id].name : saga_phase(g).name); ch.type = 'button'; ch.addEventListener('click', () => { if (!modal && game && !game.over) openSaga(); }); chips.append(ch); }
   const objs = g.objectives(), next = objs.find((o) => !o[1]) || objs[objs.length - 1];
   $('#goal').innerHTML = ''; $('#goal').append(el('b', null, 'Goal '), next ? next[0] : '', '');
   layoutOverlays();
@@ -571,6 +576,9 @@ function contextAction() {
   if (lv.items[k] || lv.docs[k]) return { label: 'Pick up', sub: lv.docs[k] ? 'document' : 'items here', run: () => g.pickup() };
   const npc = g.adjacent_npc();
   if (npc) return { label: 'Talk', sub: npc.name, run: () => openNpc(npc) };
+  const horse = mount_adjacent(g);
+  if (horse && !g.riding) return { label: horse.mount ? (g.player.count('saddle') ? 'Ride' : 'Horse') : 'Approach', sub: horse.mount ? horse.name : `a wild ${mount_word(g)}`, run: () => openMount(horse) };
+  if (g.riding && !npc) return { label: 'Dismount', sub: g.riding.name, run: () => g.dismount() };
   const pet = g.adjacent_pet();
   if (pet) return { label: pet.pet ? 'Pet' : 'Offer food', sub: pet.stray ? `a stray ${pet.species}` : pet.name, run: () => openPet(pet) };
   if (g.adjacent_tile(T.BED)) return { label: 'Sleep', sub: 'until morning', run: () => confirmSleep() };
@@ -610,27 +618,35 @@ function aimTap(tx, ty) {
 }
 
 function cancelTravel() { if (travel) { clearTimeout(travel.timer); travel = null; pathPreview = null; dirty = true; } }
-function startTravel(path) {
-  travel = { path, i: 0, timer: 0 }; pathPreview = path; stepTravel();
+// Walking a tapped route works the same with or without enemies around: it only stops when you arrive, when you are hurt,
+// when you change level, or when you tap again. If something steps into the way, the route is planned again around it.
+function startTravel(path, goal) {
+  const end = path[path.length - 1];
+  travel = { path, i: 0, timer: 0, goal: goal || end }; pathPreview = path; stepTravel();
 }
 function stepTravel() {
   if (!travel) return;
-  const g = game, p = g.player;
+  const g = game, p = g.player, lv = g.level;
   if (g.over || g.pending_event || modal) { cancelTravel(); return; }
-  if (g.visible_hostiles().length) { toast('Enemy in view'); cancelTravel(); return; }
   if (g.live && !g.ready()) { travel.timer = setTimeout(stepTravel, 40); return; }
-  const next = travel.path[travel.i];
+  let next = travel.path[travel.i];
+  if (next && lv.occ.has(lv.idx(next[0], next[1])) && !(next[0] === travel.goal[0] && next[1] === travel.goal[1])) {
+    const again = route(travel.goal[0], travel.goal[1]);
+    if (!again || !again.length) { cancelTravel(); return; }
+    travel.path = again; travel.i = 0; next = again[0];
+  }
   const dx = next[0] - p.x, dy = next[1] - p.y;
   if (Math.max(Math.abs(dx), Math.abs(dy)) !== 1) { cancelTravel(); return; }
-  const logN = g.log.length, hp = p.hp, lvl = g.level.id;
+  const target = lv.occ.get(lv.idx(next[0], next[1]));
+  if (target && target !== p) { cancelTravel(); return; }       // never walk into someone by accident: the next tap decides
+  const hp = p.hp, lvl = lv.id;
   const ok = g.move(dx, dy);
   afterAction();
   if (!travel) return;
   if (!ok) { cancelTravel(); return; }
   travel.i++;
   pathPreview = travel.path.slice(travel.i);
-  const alarming = g.log.slice(logN).some((m) => m[2] === 'bad' || m[2] === 'warn');
-  if (travel.i >= travel.path.length || p.hp < hp || alarming || g.level.id !== lvl) { cancelTravel(); return; }
+  if (travel.i >= travel.path.length || p.hp < hp || g.level.id !== lvl) { cancelTravel(); return; }
   travel.timer = setTimeout(stepTravel, 75);
 }
 function route(tx, ty) {
@@ -665,6 +681,12 @@ function onTap(sx, sy) {
       if (d <= 1) doAction(() => openNpc(a)); else toast('Walk next to them to talk');
       return;
     }
+    if (a.kind === 'animal' && a.species === 'horse') {
+      if (d <= 1) doAction(() => openMount(a));
+      else if (!a.mount && is_ranged(weapon_def(g)) && d <= weapon_def(g).reach) doAction(() => g.fire(a));
+      else toast(a.mount ? 'Walk next to it' : 'Creep up next to it');
+      return;
+    }
     if (a.kind === 'animal' && (a.pet || a.stray)) {
       if (d <= 1) doAction(() => openPet(a)); else toast(a.stray ? 'Walk next to it to offer food' : 'Walk next to it');
       return;
@@ -673,12 +695,14 @@ function onTap(sx, sy) {
     if (d <= 1) doAction(() => g.move(dx, dy));
     else if (is_ranged(w) && d <= w.reach) doAction(() => g.fire(a));
     else if (w.reach > 1 && d <= w.reach) doAction(() => g.attack(a));
-    else toast('Out of reach');
+    else if (prefs.travel) {                                      // too far to hit: walk up to it, the next tap strikes
+      const path = route(tx, ty);
+      if (path && path.length > 1) startTravel(path.slice(0, -1), [tx, ty]); else toast('No route there');
+    } else toast('Out of reach');
     return;
   }
   if (d === 1) { doAction(() => g.move(dx, dy)); return; }
   if (!prefs.travel) { toast('Tap-to-travel is off'); return; }
-  if (g.visible_hostiles().length) { toast('Enemies nearby: move with the pad'); return; }
   const path = route(tx, ty);
   if (!path || !path.length) { toast(lv.seen[lv.idx(tx, ty)] ? 'No route there' : 'Unexplored'); return; }
   startTravel(path);
@@ -693,9 +717,24 @@ function onLongPress(sx, sy) {
 // ---------------------------------------------------------------- touch input on the map
 const pts = new Map();
 let pinch = null, press = null, moved = false;
+// Apple Pencil: once a pen has touched the screen, a palm resting on it is ignored. A finger that lands while the pen is down,
+// or within a moment of it, is not a tap, not a long press and not half of a pinch.
+const PALM_WINDOW = 900;
+let penSeen = 0, penDown = false;
+const isPalm = (e) => e.pointerType === 'touch' && (penDown || performance.now() - penSeen < PALM_WINDOW);
+const notePen = (e) => { if (e.pointerType === 'pen') penSeen = performance.now(); };
+document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'pen') { penDown = true; notePen(e); }
+  else if (isPalm(e)) { e.stopPropagation(); e.preventDefault(); }      // keeps the palm off the pad and the buttons too
+}, true);
+document.addEventListener('pointermove', notePen, true);
+document.addEventListener('pointerup', (e) => { if (e.pointerType === 'pen') { penDown = false; notePen(e); } }, true);
+document.addEventListener('pointercancel', (e) => { if (e.pointerType === 'pen') { penDown = false; notePen(e); } }, true);
+document.addEventListener('click', (e) => { if (e.pointerType === 'touch' && (penDown || performance.now() - penSeen < PALM_WINDOW)) { e.stopPropagation(); e.preventDefault(); } }, true);
 cv.addEventListener('pointerdown', (e) => {
-  cv.setPointerCapture(e.pointerId);
-  pts.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
+  if (e.pointerType === 'pen') for (const id of [...pts.keys()]) if (pts.get(id).touch) { pts.delete(id); pinch = null; }    // the palm got there first
+  try { cv.setPointerCapture(e.pointerId); } catch (err) { /* a pointer the browser no longer tracks */ }
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, touch: e.pointerType === 'touch' });
   if (pts.size === 1) {
     moved = false; press = setTimeout(() => { if (!moved && pts.size === 1) { const q = pts.values().next().value; press = null; moved = true; onLongPress(q.x, q.y); } }, 450);
   } else if (pts.size === 2) {
@@ -816,6 +855,7 @@ function itemStats(it) {
   if (d.kind === 'weapon') bits.push(`${d.style} ${d.dmg[0]}-${d.dmg[1]}` + (d.reach > 1 ? `, reach ${d.reach}` : '') + (d.ammo ? `, uses ${game.item_def(d.ammo).name.toLowerCase()}` : '') + `, noise ${d.noise}`);
   else if (d.kind === 'armor') bits.push(`defence ${d.defense}, bite guard ${Math.round(d.bite_guard * 100)}%` + (d.stealth ? `, noisy +${d.stealth}` : ''));
   else if (d.kind === 'light') bits.push(`light radius ${d.light}`);
+  else if (d.kind === 'shield') bits.push(`blocks ${Math.round(d.block * 100)}% of blows that land; not with a bow, polearm or long gun` + (two_handed(game) ? ' (your weapon needs both hands)' : ''));
   else bits.push(d.desc);
   if (d.durability && it.dur !== null) bits.push(`${d.kind === 'light' ? 'fuel' : 'condition'} ${it.dur}/${d.durability}`);
   return bits.filter(Boolean).join(' · ');
@@ -825,7 +865,7 @@ function openInventory(sel = -1) {
   openSheet(`Pack ${game.player.slots_used()}/${INVENTORY_SLOTS}`, (body) => {
     const p = game.player;
     body.append(el('h3', 'sec', 'Carried now'));
-    for (const [slot, label] of [['weapon', 'Hand'], ['armor', 'Body'], ['light', 'Light']]) {
+    for (const [slot, label] of [['weapon', 'Hand'], ['shield', 'Off hand'], ['armor', 'Body'], ['light', 'Light']]) {
       const it = p[slot];
       const row = el('div', 'row');
       row.append(el('div', 'badge', label[0]), el('div', 'main', [el('div', 'name', it ? itemName(it) : (slot === 'weapon' ? 'Bare fists' : 'Nothing')), el('div', 'sub', it ? itemStats(it) : label)]));
@@ -845,7 +885,7 @@ function openInventory(sel = -1) {
       body.append(row);
       if (i === sel) {
         const acts = el('div', 'actionrow');
-        const use = { weapon: 'Equip', armor: 'Equip', light: 'Equip', food: 'Eat', med: 'Use', tool: 'Use', throw: 'Throw' }[d.kind] || (d.effect.refuel ? 'Refuel light' : null);
+        const use = { weapon: 'Equip', armor: 'Equip', light: 'Equip', shield: 'Equip', food: 'Eat', med: 'Use', tool: 'Use', throw: 'Throw' }[d.kind] || (d.effect.refuel ? 'Refuel light' : null);
         if (use) acts.append(btn('btn main', use, () => {
           if (d.kind === 'throw') { closeSheet(); startAim('throw', d.id); return; }
           sheetAct(() => game.use(i)); openInventory(Math.min(sel, game.player.inventory.length - 1));
@@ -859,7 +899,7 @@ function openInventory(sel = -1) {
 
 function openCraft() {
   openSheet(`Craft · fluency ${Math.floor(game.know.fluency * 100)}%`, (body) => {
-    body.append(el('p', 'note', `Better recipes need more of the ${game.era.cipher_name.toLowerCase()}. Crafting takes a few turns.`));
+    body.append(el('p', 'note', `Weapons, arrows and shields can be made anywhere; beside a workshop it is faster and the work is sturdier${at_workshop(game) ? ' (you are at one)' : ''}. Better recipes need more of the ${game.era.cipher_name.toLowerCase()}.`));
     let hidden = 0;
     for (const r of CONTENT.recipes) {
       const out = recipe_output(game, r);
@@ -869,7 +909,7 @@ function openCraft() {
       const need = r.inputs.map(([i, q]) => `${q}x ${game.item_def(i).name.toLowerCase()}`).join(', ');
       const row = el('div', 'row tap' + (ok ? '' : ' off'));
       row.append(el('div', 'main', [el('div', 'name', `${game.item_def(out).name}${r.qty > 1 ? ' x' + r.qty : ''}`), el('div', 'sub', need + (ok ? '' : ' · ' + why))]));
-      if (ok) row.append(el('div', 'tag', `${r.turns} turns`));
+      if (ok) row.append(el('div', 'tag', `${recipe_turns(game, r)} turns`));
       row.addEventListener('click', () => { if (ok) { const top = $('#sheet-body').scrollTop; sheetAct(() => game.craft(r.id)); if (!game.over) openSheetKeep(openCraft, top); } else toast(why); });
       body.append(row);
     }
@@ -881,7 +921,7 @@ function openBase() {
   openSheet(in_base(g) ? `Your base · ${g.level.name}` : 'A base of your own', (body) => {
     if (!in_base(g)) {
       const reason = can_claim(g);
-      body.append(el('p', 'event-text', 'A base is a building you have cleared and claimed. Fit it out with a workshop, a cot, a locker and barricades; at night the dead will come for it. If you die in hardcore, the next survivor wakes here, and the locker is still full.'));
+      body.append(el('p', 'event-text', 'A base is a building you have cleared and claimed. Fit it out with a workshop, a cot, a locker and barricades (from your pack or the locker); at night the dead will come for it. If you die in hardcore, the next survivor wakes here, and the locker is still full.'));
       if (reason) body.append(el('p', 'note', reason));
       else body.append(el('div', 'actionrow', [btn('btn main', 'Claim ' + g.level.name, () => { closeSheet(); doAction(() => g.claim_base()); }), btn('btn', 'Not now', () => closeSheet())]));
       return;
@@ -894,6 +934,140 @@ function openBase() {
       row.append(el('div', 'main', [el('div', 'name', s.name), el('div', 'sub', `${need} · ${s.desc}` + (ok ? '' : ' · ' + why))]));
       row.addEventListener('click', () => { if (ok) { const top = $('#sheet-body').scrollTop; sheetAct(() => g.build_structure(s.id)); if (!g.over) openSheetKeep(openBase, top); } else toast(why); });
       body.append(row);
+    }
+    if (g.saga) baseSaga(body);
+  });
+}
+
+// Endless: the people who live here, what you are building together, and how it can end.
+function baseSaga(body) {
+  const g = game, S = g.saga, redo = () => { const top = $('#sheet-body').scrollTop; openSheetKeep(openBase, top); };
+  body.append(el('h3', 'sec', `Your people · ${S.residents.length}/${saga_capacity(g)} beds`));
+  if (!S.residents.length) body.append(el('p', 'note', 'Nobody lives here yet. Leave your companion here, bring people from outposts, or take in whoever comes to the door. Each cot you build is room for two more.'));
+  for (const r of S.residents) {
+    const row = el('div', 'row tap');
+    row.append(el('div', 'badge', r.name[0]), el('div', 'main', [el('div', 'name', `${r.name}, ${saga_label(r)}`), el('div', 'sub', `${SAGA_JOBS[r.job][0]} · morale ${r.morale}` + (r.bitten ? ' · BITTEN' : r.hurt ? ' · hurt' : '') + (r.faction !== 'enclave' ? ` · from ${faction_name(g, r.faction)}` : ''))]));
+    row.addEventListener('click', () => openResident(r));
+    body.append(row);
+  }
+  const food = S.residents.length ? lockerFood(g) : 0;
+  if (S.residents.length) body.append(el('p', 'note', `Food in the locker: ${food} portion${food === 1 ? '' : 's'}. They eat ${Math.ceil(S.residents.length * saga_mod(g, 'food_need'))} a day, every morning.`));
+  body.append(el('h3', 'sec', 'Projects'));
+  if (S.building) {
+    const q = SAGA_PROJECT_BY_ID[S.building];
+    body.append(el('p', 'event-text', `Building the ${saga_project_name(g, q.id).toLowerCase()}: ${S.progress[q.id] || 0}/${q.work} days of work. People on Build add one a day (a tinker two).`));
+    body.append(el('div', 'actionrow', [btn('btn main', 'Work on it (4 hours)', () => { sheetAct(() => saga_work(g)); if (!g.over && !$('#overlay').hidden) redo(); })]));
+  }
+  for (const q of SAGA_PROJECTS) {
+    const [ok, why] = saga_project_status(g, q);
+    const need = q.cost.map(([i, n]) => `${n}x ${g.item_def(i).name.toLowerCase()}`).join(', ');
+    const row = el('div', 'row tap' + (ok ? '' : ' off'));
+    row.append(el('div', 'badge', S.built.includes(q.id) ? 'ok' : '·'), el('div', 'main', [el('div', 'name', saga_project_name(g, q.id)), el('div', 'sub', `${need} · ${q.work} days · ${q.desc}` + (ok ? '' : ' · ' + why))]));
+    row.addEventListener('click', () => { if (!ok) { toast(why); return; } const r = saga_start_project(g, q.id); if (r) toast(r); refresh(); redo(); });
+    body.append(row);
+  }
+  body.append(el('p', 'note', 'Materials come from your pack and the locker.'));
+  body.append(el('h3', 'sec', 'How it ends'));
+  for (const e of saga_endings(g)) {
+    const row = el('div', 'row' + (e.ready ? ' tap' : ''));
+    row.append(el('div', 'badge', e.ready ? '!' : '·'), el('div', 'main', [el('div', 'name', e.name), el('div', 'sub', e.text + (e.ready ? ` · ready: a final stand of ${e.turns} turns, here` : ''))]));
+    if (e.ready) row.addEventListener('click', () => confirmEnding(e));
+    body.append(row);
+  }
+}
+function lockerFood(g) { const lv = saga_base_level(g); return lv ? lv.stash.filter((i) => g.item_def(i.id).kind === 'food').reduce((s, i) => s + i.qty, 0) : 0; }
+
+function openResident(r, line = '') {
+  const g = game;
+  openSheet(r.name, (b) => {
+    const a = COMP_BY_ID[r.arch];
+    b.append(el('p', 'event-text', `${r.name}, ${saga_label(r)}. Morale ${r.morale}/100${r.hurt ? ', hurt' : ''}. With you since day ${r.joined}.` + (a ? ` Good at it: ${COMP.strengths[a.strength]}.` : '')));
+    if (line) b.append(el('p', 'note say t-ally', line));
+    if (r.bitten) {
+      const late = game_day(g) - r.bitten >= 1;
+      b.append(el('p', 'event-text t-bad', late ? 'Bitten, and the fever has started. By tomorrow morning they will turn.' : 'Bitten. The fever has not started yet: a blade could still save them.'));
+      const row = el('div', 'actionrow');
+      if (!late) row.append(btn('btn danger', 'Cut it off', () => { const l = resident_cut(g, r); refresh(); openResident(r, l); }));
+      row.append(btn('btn danger', 'Let them go', () => { const l = resident_mercy(g, r); refresh(); openBase(); toast(l); }));
+      b.append(row);
+    }
+    b.append(el('h3', 'sec', 'Their work'));
+    for (const [id, [name, desc]] of Object.entries(SAGA_JOBS)) {
+      const need = SAGA_JOB_NEEDS[id], off = need && !saga_built(g, need);
+      const row = el('div', 'row tap' + (off ? ' off' : '') + (r.job === id ? ' on' : ''));
+      row.append(el('div', 'badge', r.job === id ? 'ok' : '·'), el('div', 'main', [el('div', 'name', name), el('div', 'sub', desc)]));
+      row.addEventListener('click', () => { const l = saga_set_job(g, r, id); openResident(r, l); });
+      b.append(row);
+    }
+    const acts = el('div', 'actionrow');
+    acts.append(btn('btn', 'Come with me', () => { const l = saga_take_along(g, r); refresh(); closeSheet(); toast(l); }));
+    acts.append(btn('btn', 'Back to the base', () => openBase()));
+    b.append(acts);
+  });
+}
+
+function confirmEnding(e) {
+  openSheet(e.name, (b) => {
+    b.append(el('p', 'event-text', `${e.text}.`));
+    b.append(el('p', 'event-text t-warn', `Once it starts you have to hold this place for ${e.turns} turns, and everything in the city will come. Barricade the doors, set traps, put people on guard. If you hold, it is over.`));
+    b.append(el('div', 'actionrow', [btn('btn danger', 'Begin', () => { const r = saga_begin_ending(game, e.id); closeSheet(); if (r) toast(r); else afterAction(); }), btn('btn', 'Not yet', () => openBase())]));
+  });
+}
+
+// An outpost: the one in charge, or one of the guards.
+function openOutpost(npc, line) {
+  const g = game, o = g.saga.outposts[npc.outpost];
+  if (!o || !o.owner) return;
+  const f = o.owner, poi = g.pois[o.id], name = faction_name(g, f), warden = npc.role === 'warden';
+  if (line === undefined) line = warden ? dlg_era(g, `"${({ ally: 'You are always welcome here.', friendly: 'Good to see you. What do you need?', wary: 'You got in. Now what do you want?' })[faction_attitude(g, f)] || 'Make it quick.'}"`) : dlg_greeting(g, npc);
+  openSheet(`${poi.name} · ${name}`, (b) => {
+    if (line) for (const para of line.split('\n\n')) b.append(el('p', 'event-text story', para));
+    b.append(el('p', 'note', `${g.era.factions[f][1]} ${o.garrison} of them hold the ground floor. They think you are ${faction_attitude(g, f)}.` + (o.sick_until > g.clock.turn ? ' There is fever here.' : '')));
+    const say = (msg) => { refresh(); openOutpost(npc, msg); };
+    const acts = el('div', 'actionrow');
+    if (warden) {
+      acts.append(btn('btn main', 'Trade', () => { closeSheet(); openTrade('', f); }));
+      acts.append(btn('btn', o.sick_until > g.clock.turn ? 'Bring medicine (2)' : 'What do you need?', () => say(outpost_help(g, npc))));
+      acts.append(btn('btn', 'Can anyone come with me?', () => say(outpost_recruit(g, npc))));
+      if (g.level.safe) acts.append(btn('btn', 'Sleep here tonight', () => { closeSheet(); doAction(() => g.sleep()); }));
+    } else acts.append(btn('btn main', 'Talk', () => say(dlg_greeting(g, npc))));
+    acts.append(btn('btn', 'The news?', () => say(dlg_news(g, npc))));
+    b.append(acts);
+    b.append(el('p', 'note', `You have ${g.player.coins} ${g.era.coin}.`));
+  }, { cls: 'brief' });
+}
+
+// Endless: the city as a whole, what phase it is in, who holds what, and what is happening.
+function openSaga() {
+  const g = game, S = g.saga, P = saga_phase(g), p = g.player;
+  openSheet(`The world · day ${game_day(g)}`, (b) => {
+    b.append(el('h3', 'sec', P.name), el('p', 'event-text', P.blurb));
+    const next = SAGA_PHASES[saga_phase_index(g) + 1];
+    if (next) b.append(el('p', 'note', `${next.name} from day ${next.from}.`));
+    const live = S.events.filter((e) => e.started && e.known !== false), coming = S.events.filter((e) => !e.started && e.known !== false);
+    if (live.length || coming.length) {
+      b.append(el('h3', 'sec', 'Happening'));
+      for (const e of live) b.append(el('div', 'row', [el('div', 'badge', '!'), el('div', 'main', el('div', 'name', SAGA_EVENTS[e.id].name))]));
+      for (const e of coming) b.append(el('div', 'row', [el('div', 'badge', '·'), el('div', 'main', [el('div', 'name', SAGA_EVENTS[e.id].name), el('div', 'sub', `in about ${Math.max(1, Math.round((e.at - g.clock.turn) / 10))} hours`)])]));
+    }
+    b.append(el('h3', 'sec', 'The factions'));
+    for (const f of SAGA_FACTIONS) {
+      const fs = S.factions[f], n = outposts_of(g, f).length;
+      const row = el('div', 'row');
+      row.append(el('div', 'main', [el('div', 'name', faction_name(g, f)), el('div', 'sub', fs.str <= 0 ? 'gone' : `${n} outpost${n === 1 ? '' : 's'} · strength ${fs.str} · they think you are ${faction_attitude(g, f)} (${g.rep[f] || 0})`)]));
+      b.append(row);
+    }
+    if (S.warlord && !S.warlord.dead) b.append(el('p', 'note t-bad', `${S.warlord.name} rules the raiders from ${g.pois[S.warlord.seat].name}.`));
+    b.append(el('h3', 'sec', 'Outposts you know'));
+    const here = world_pos(g), known = Object.values(S.outposts).filter((o) => g.pois[o.id].revealed || g.pois[o.id].visited).sort((a, c) => cheb(poi_pos(g.pois[a.id]), here) - cheb(poi_pos(g.pois[c.id]), here));
+    if (!known.length) b.append(el('p', 'note', 'None yet. Buildings with people in them show up as you find them, or on the radio once you have one.'));
+    for (const o of known) {
+      const q = g.pois[o.id];
+      b.append(el('div', 'row', [el('div', 'badge', POI_LETTER[q.kind] || 'H'), el('div', 'main', [el('div', 'name', outpost_lines(g, o)), el('div', 'sub', `${compass(q.x - here[0], q.y - here[1])} · ${dist_words(g.era.id, cheb(poi_pos(q), here))}`)])]));
+    }
+    if (S.log.length) {
+      b.append(el('h3', 'sec', 'What you have heard'));
+      for (const [day, text] of S.log.slice(-15).reverse()) b.append(el('div', 'row', [el('div', 'main', el('div', null, text)), el('div', 'tag', 'D' + day)]));
     }
   });
 }
@@ -987,12 +1161,12 @@ function openPlaces() {
       const row = el('div', 'row tap');
       const goal = q.id === g.final_site_id;
       row.append(el('div', 'badge', POI_LETTER[q.kind] || 'H'), el('div', 'main', [el('div', 'name', q.name + (goal ? ' (goal)' : '')),
-        el('div', 'sub', `${compass(q.x - p.x, q.y - p.y)} · ${dist_words(game.era.id, cheb(poi_pos(q), [p.x, p.y]))} · ${q.visited ? 'visited' : 'unvisited'}${q.papers && !q.visited ? ' · papers rumoured' : ''}${q.lead && q.component && p.count(q.component) === 0 ? ' · holds a component' : ''}`)]));
+        el('div', 'sub', `${compass(q.x - p.x, q.y - p.y)} · ${dist_words(game.era.id, cheb(poi_pos(q), [p.x, p.y]))} · ${q.visited ? 'visited' : 'unvisited'}${q.papers && !q.visited ? ' · papers rumoured' : ''}${q.lead && q.component && p.count(q.component) === 0 ? ' · holds a component' : ''}${g.saga && outpost_of(g, q.id) && (outpost_of(g, q.id).owner || outpost_of(g, q.id).overrun) ? ' · ' + outpost_lines(g, outpost_of(g, q.id)).split(': ').slice(1).join(': ') : ''}`)]));
       row.addEventListener('click', () => {
         if (g.level.kind !== 'overworld') { toast('Go outside first'); return; }
         const path = player_path(g.level, [p.x, p.y], [q.x, q.y], () => true);
         closeSheet();
-        if (!path || !path.length) toast('No route'); else if (g.visible_hostiles().length) toast('Enemies nearby'); else startTravel(path);
+        if (!path || !path.length) toast('No route'); else startTravel(path);
       });
       body.append(row);
     }
@@ -1015,6 +1189,8 @@ function openStatus() {
     add('Kills', `${p.stats.zombies || 0} dead, ${p.stats.humans || 0} people`);
     add('Time', `${stampOf(g)} (${g.clock.phase})`);
     if (p.infected) add('Infection', `${p.infection_timer} turns left (about ${Math.round(p.infection_timer / 10)} hours)`);
+    if (g.front) add('The tide', front_status(g));
+    if (g.saga) { add('The world', `${saga_phase(g).name} (day ${game_day(g)})`); if (g.base_id) add('Your people', `${g.saga.residents.length} at the base`); }
     if (g.deadline_days) add('Deadline', `the way out closes after day ${g.deadline_days}` + (g.lost_turns ? ` (the road has cost ${Math.round(g.lost_turns / 10)} hours)` : ''));
     add('The dead', `${g.profile.name}. ${profile_phase(g.profile, game_day(g)).name}.`);
     { const r = mutation_here(g); add('This district', `${r.name}: ${mutation_traits_text(r)}`); }
@@ -1036,7 +1212,7 @@ function openLog(all = false) {
 function openHelp() {
   openSheet('How to play', (body) => {
     const li = (t, d) => body.append(el('div', 'row', el('div', 'main', [el('div', 'name', t), el('div', 'sub', d)])));
-    li('Move', 'Hold the pad, or tap a tile to walk there. Walking stops when an enemy appears. Tap an adjacent enemy to hit it.');
+    li('Move', 'Hold the pad, or tap a tile to walk there (with or without enemies around; it stops if you are hurt or tap again). Tap an enemy to hit it, shoot it, or walk up to it if it is out of reach.');
     li('ACT button', 'It changes with what is next to you: pick up, search a crate, talk, sleep, unlock, rest. Tap yourself for the same.');
     li('Fire', 'With a ranged weapon equipped: one target fires at once; with several, tap the one you want.');
     li('Push', 'Shove the dead (or a raider) next to you: it staggers back a tile (two if you are level 4+) and loses a turn or two. Make room, break off, or steer it onto a trap or a fire. Brutes resist, the big one does not budge, a wall behind it hurts it. Costs stamina; keyboard V.');
@@ -1052,6 +1228,16 @@ function openHelp() {
     li('Vaults', 'Components lie in locked vaults on the lowest floor. Use the code, or force the door (loud).');
     li('Long press', 'Hold on a tile to see what it is. Pinch to zoom.');
     li('Humanity', 'Your choices on the road decide who trades with you and who you face at the end.');
+    li('Pets', 'Dogs, cats, crows and foxes wander the world as strays (a small teal dot). Walk up to one and tap it (or ACT) to offer it food: dogs say yes most often, foxes least; creeping and a decent reputation help. One pet at a time; feed it or it leaves.');
+    li('Horses', 'Small herds graze on open ground away from the city (striders on the station). They bolt like deer: creep up, tap it and offer food (wild greens are best). Craft a saddle to ride: two tiles a turn, three at a gallop (RUN), no stamina, but loud. You leave it outside buildings. Some blows meant for you hit it; badly hurt, it throws you and bolts. Tap the horse chip for its sheet.');
+    li('Bites are for everyone', 'The dead infect the living around you by the same rule as you: your companion, soldiers, guards, raiders. A bitten person turns into one of the dead when the fever runs out. For your companion (talk to them): cut off a bitten arm or leg in time with a blade, slow it with a suppressant, or let them go before it happens. People at your base can be bitten in a raid: you have until the morning after.');
+    li('Crafting weapons', 'Menu > Craft. Weapons (nail club, blade, spear, pike, bows), arrows and shields are known from the start and can be made anywhere from wood, scrap and cloth. Beside a workshop (build one in your base) it is faster and sturdier: away from one a weapon or shield comes out at 60% condition and you get one arrow fewer.');
+    li('Shields', 'Equip one from the pack: it goes in your off hand and blocks about a fifth (plank) or a third (reinforced) of the blows that land, losing condition each time. It does nothing while you hold a bow, a polearm or a long gun.');
+    li('Dash: the tide', 'No calendar: a tide of the dead rolls up the road behind you, a little slower than a walk. Searching buildings, sleeping and detours all cost ground. The chip shows how far behind it is; if it reaches you the dead come from everywhere, and if it gets far past you it is over. Near the way out the transport starts loading: reach its doors in time.');
+    li('Endless: the world', 'The city goes through phases (the Collapse, the Scramble, the Holdouts, the Long Winter, the End of Days) that change loot, food, prices and what the factions do. World events are announced first: supply drops, migrations, firebreaks, a blood moon, fevers, wars, a warlord. The chip and Menu > The world show it all.');
+    li('Endless: outposts', 'Some buildings are held by a faction: a voice behind a barricade stops you at the door. Talk, pay, bring food, or fight your way in. Inside, the one in charge trades, takes requests, lets you sleep, and may send someone with you. Answer their calls for help (a siege, a fever) and they become allies.');
+    li('Endless: your base', 'Claim a building, build cots, and people can live there: your companion, people from outposts, refugees at the door. Give them work (guard, scavenge, medic, build, grow food, research); they eat from the locker each morning and hold the walls when you are away. Build projects together: a radio, a lookout, a greenhouse, an infirmary, a wall, a generator, a laboratory, a vehicle.');
+    li('Endless: endings', 'Besides surviving: the cure (laboratory, research, the three components and the formula), the exodus (finish the vehicle), or the sanctuary (a radio, three allied outposts, day 20). Each starts a final stand at your base; hold until it is over.');
   });
 }
 
@@ -1074,7 +1260,7 @@ function openMenu() {
     tile('Light', p.light ? (p.light_on ? 'on: you are visible' : 'off') : 'none carried', () => { sheetAct(() => g.toggle_light()); openMenu(); }, p.light && p.light_on);
     tile('Gore disguise', 'smear with a corpse', () => { closeSheet(); doAction(() => g.smear()); });
     tile('Field report', 'goals and stats', () => openStatus());
-    if (g.shared) tile('World', 'the shared season', () => openWorld());
+    if (g.saga) tile('The world', `${saga_phase(g).name}`, () => openSaga());
     tile('Briefing', 'the story so far', () => showBriefing(0));
     tile('Journal', 'message history', () => openLog());
     tile('Settings', 'zoom, layout, save', () => openSettings());
@@ -1124,7 +1310,7 @@ function openSettings(msg) {
     body.append(el('div', 'row', [el('div', 'main', [el('div', 'name', 'Volume'), el('div', 'sub', `${Math.round(audio_settings().vol * 100)}%`)]),
       btn('btn', '-', () => { audio_settings({ vol: audio_settings().vol - 0.1 }); saveAudio(); audio_play('click'); openSettings(); }), btn('btn', '+', () => { audio_settings({ vol: audio_settings().vol + 0.1 }); saveAudio(); audio_play('click'); openSettings(); })]));
     if (typeof SPRITE_DATA !== 'undefined') tg2('Pixel sprites', 'Art by Kenney (CC0). Off draws plain shapes.', prefs.sprites !== false, () => { prefs.sprites = prefs.sprites === false; savePrefs(); dirty = true; openSettings(); });
-    if (game && game.live && game.cfg.mode === 'living') tg2('Pause the world', 'The shared world cannot be paused; a private one can.', game.paused, () => { game.paused = !game.paused; openSettings(); });
+    if (game && game.live && game.cfg.mode === 'living') tg2('Pause the world', 'Stop the clock until you unpause.', game.paused, () => { game.paused = !game.paused; openSettings(); });
     const acts = el('div', 'actionrow'); acts.style.marginTop = '14px';
     acts.append(btn('btn main', 'Save now', () => { openSettings(trySave() ? 'Saved on this device.' : 'This browser would not let the page store a save.'); }));
     acts.append(btn('btn danger', 'Save and quit to title', () => { trySave(); quitToTitle(); }));
@@ -1135,6 +1321,35 @@ function openSettings(msg) {
 }
 
 // ---------------------------------------------------------------- people, rest and events
+function openMount(a, line = '') {
+  const g = game, word = mount_word(g);
+  openSheet(a.mount ? a.name : `A wild ${word}`, (b) => {
+    const say = (l) => { refresh(); if (g.over) return; const m = mount_current(g); if (m) openMount(m, l); else { closeSheet(); toast(l); } };
+    if (!a.mount) {
+      b.append(el('p', 'event-text', `It lifts its head and watches you. One wrong move and it is gone. Offer it food (wild greens are best), creeping helps. Tamed, it follows you; with a saddle you can ride it.`));
+      if (line) b.append(el('p', 'note say t-ally', line));
+      const acts = el('div', 'actionrow');
+      acts.append(btn('btn main', 'Offer it food', () => say(mount_tame(g, a))));
+      acts.append(btn('btn danger', 'Hunt it', () => { closeSheet(); doAction(() => g.attack(a)); }));
+      b.append(acts);
+      return;
+    }
+    b.append(el('p', 'event-text', `${a.name}, your ${word}. HP ${a.hp}/${a.max_hp}. ${g.riding === a ? 'You are riding.' : a.state === 'wait' ? 'Waiting.' : 'Following you.'}`));
+    b.append(el('p', 'note', 'Riding: two tiles a turn, three at a gallop (RUN), no stamina, but loud. You leave it outside buildings. Blows aimed at you sometimes land on it; badly hurt, it throws you and bolts.'));
+    if (line) b.append(el('p', 'note say t-ally', line));
+    const acts = el('div', 'actionrow');
+    if (g.riding === a) acts.append(btn('btn main', 'Get down', () => { closeSheet(); doAction(() => g.dismount()); }));
+    else {
+      const why = mount_can_ride(g, a);
+      acts.append(btn('btn main' + (why ? ' off' : ''), 'Ride', () => { if (why) { toast(why); return; } closeSheet(); doAction(() => g.ride(a)); }));
+      acts.append(btn('btn', a.state === 'wait' ? 'Follow me' : 'Wait here', () => say(mount_toggle_wait(g, a))));
+    }
+    acts.append(btn('btn', 'Feed it', () => say(mount_feed(g, a))));
+    acts.append(btn('btn danger', 'Let it go', () => { const l = mount_release(g, a); refresh(); closeSheet(); toast(l); }));
+    b.append(acts);
+  });
+}
+
 function openPet(a, line = '') {
   const g = game;
   if (a.stray) {
@@ -1179,6 +1394,14 @@ function openCompanion(c, line = '') {
     b.append(el('p', 'event-text', `${c.name}, ${a.label}. ${comp_bond_word(c)}. HP ${c.hp}/${c.max_hp}.`));
     b.append(el('p', 'note', `Good at it: ${COMP.strengths[a.strength]}. Trouble: ${COMP.flaws[a.flaw]}.`));
     if (line) b.append(el('p', 'note say t-ally', line));
+    if (c.infected) {
+      b.append(el('p', 'event-text t-bad', `Bitten (${c.bite_limb}). About ${Math.max(1, Math.round(c.infection_timer / 10))} hours until the fever takes them.` + (c.bite_window > 0 ? ` A limb can still be cut off for ${c.bite_window} turns.` : '')));
+      const cure = el('div', 'actionrow'), say = (l) => { refresh(); if (g.over || !comp_current(g)) { closeSheet(); toast(l); } else openCompanion(c, l); };
+      if (c.bite_window > 0 && c.bite_limb !== 'torso') cure.append(btn('btn danger', `Cut off the ${c.bite_limb}`, () => say(npc_cut(g, c))));
+      cure.append(btn('btn', 'Give a suppressant', () => say(npc_suppress(g, c))));
+      cure.append(btn('btn danger', 'Let them go, before it happens', () => say(npc_mercy(g, c))));
+      b.append(cure);
+    }
     const acts = el('div', 'actionrow');
     acts.append(btn('btn main', 'Talk', () => { const l = comp_talk(g, c); refresh(); openCompanion(c, l); }));
     acts.append(btn('btn', 'What next?', () => openCompanion(c, comp_advice(g))));
@@ -1208,12 +1431,14 @@ function openCompanion(c, line = '') {
       for (const [it, i] of gifts) row.append(btn('btn', `${g.item_def(it.id).name} x${it.qty}`, () => { const l = comp_give(g, c, i); refresh(); openCompanion(c, l); }));
       b.append(row);
     }
+    if (g.saga && in_base(g)) b.append(btn('btn', 'Stay here at the base', () => { const l = saga_station(g, c); refresh(); closeSheet(); toast(l); }));
     b.append(btn('btn danger', 'Go your own way', () => { const l = comp_dismiss(g, c); refresh(); closeSheet(); toast(l); }));
   });
 }
 
 function openNpc(npc, line) {
   const g = game;
+  if (npc.outpost && g.saga) { openOutpost(npc, line); return; }
   if (npc.trait && npc.uid === g.companion_uid) { openCompanion(npc); return; }
   const personal = ['trader', 'healer', 'scholar', 'scout', 'soldier'].includes(npc.role);
   if (!['scout', 'soldier'].includes(npc.role)) {
@@ -1245,15 +1470,15 @@ function openNpc(npc, line) {
   }, { cls: 'brief' });
 }
 
-function openTrade(msg) {
+function openTrade(msg, faction = 'enclave') {
   const g = game, p = g.player;
-  openSheet(`Trader · ${p.coins} ${g.era.coin}`, (body) => {
+  openSheet(`${faction === 'enclave' ? 'Trader' : cap(WARDEN_WORD[faction] || 'trader')} · ${p.coins} ${g.era.coin}`, (body) => {
     if (msg) body.append(el('p', 'note t-good', msg));
     body.append(el('h3', 'sec', 'Buy'));
-    for (const [id, price] of stock(g)) {
+    for (const [id, price] of stock(g, faction)) {
       const row = el('div', 'row tap');
       row.append(el('div', 'main', [el('div', 'name', g.item_def(id).name), el('div', 'sub', g.item_def(id).desc)]), el('div', 'tag', `${price} ${g.era.coin}`));
-      row.addEventListener('click', () => { const t = $('#sheet-body').scrollTop; const r = buy(g, id); refresh(); openTrade(r); $('#sheet-body').scrollTop = t; });
+      row.addEventListener('click', () => { const t = $('#sheet-body').scrollTop; const r = buy(g, id, faction); refresh(); openTrade(r, faction); $('#sheet-body').scrollTop = t; });
       body.append(row);
     }
     body.append(el('h3', 'sec', 'Sell'));
@@ -1262,7 +1487,7 @@ function openTrade(msg) {
       if (g.item_def(it.id).kind === 'component' || price <= 0) return;
       const row = el('div', 'row tap');
       row.append(el('div', 'main', el('div', 'name', itemName(it) + (it.qty > 1 ? ` x${it.qty}` : ''))), el('div', 'tag', `${price} ${g.era.coin}`));
-      row.addEventListener('click', () => { const t = $('#sheet-body').scrollTop; const r = sell(g, i); refresh(); openTrade(r); $('#sheet-body').scrollTop = t; });
+      row.addEventListener('click', () => { const t = $('#sheet-body').scrollTop; const r = sell(g, i); refresh(); openTrade(r, faction); $('#sheet-body').scrollTop = t; });
       body.append(row);
     });
   });
@@ -1289,9 +1514,10 @@ function confirmSleep() {
 
 function showEvent() {
   const g = game, ev = g.pending_event, def = EVENT_BY_ID[ev.event_id];
-  openSheet(def.title, (body) => {
+  const title = (ev.data && ev.data.title) || def.title, choices = (ev.data && ev.data.choices) || def.choices;
+  openSheet(title, (body) => {
     body.append(el('p', 'event-text', ev.text));
-    def.choices.forEach((c, i) => {
+    choices.forEach((c, i) => {
       const ok = can_afford(g, c);
       const b = el('button', 'choice', fmt(c.label, event_context(g))); b.type = 'button'; b.disabled = !ok;
       if (!ok) b.append(el('small', null, 'You cannot afford that'));
@@ -1299,7 +1525,8 @@ function showEvent() {
         const text = g.resolve_event(i);
         if (text === 'You cannot afford that.') { toast(text); return; }
         refresh();
-        openSheet(def.title, (bd) => { bd.append(el('p', 'event-text', text), btn('btn main', 'Continue', () => closeSheet())); }, { locked: true });
+        if (g.over) { closeSheet(); return; }
+        openSheet(title, (bd) => { bd.append(el('p', 'event-text', text), btn('btn main', 'Continue', () => closeSheet())); }, { locked: true });
       });
       body.append(b);
     });
@@ -1307,14 +1534,14 @@ function showEvent() {
 }
 
 // ---------------------------------------------------------------- screens: title, new game, ending
-function hideAll() { for (const id of ['#title', '#newgame', '#ending']) $(id).hidden = true; for (const id of ['#hud', '#controls', '#alert', '#aim']) $(id).hidden = true; }
+function hideAll() { for (const id of ['#title', '#newgame', '#ending', '#battle']) $(id).hidden = true; for (const id of ['#hud', '#controls', '#alert', '#aim']) $(id).hidden = true; }
 function showGameUi() { hideAll(); $('#hud').hidden = false; $('#controls').hidden = false; resize(); refresh(); }
 
 function trySave() {
   if (!game || game.over) return false;
   try { save_game(game); storageOk = true; return true; } catch (e) { storageOk = false; return false; }
 }
-function quitToTitle() { audio_set_playing(false); if (!$('#overlay').hidden) { $('#overlay').hidden = true; modal = 0; } game = null; if (sharedWorld) { sharedWorld.flush(); sharedWorld.detach(); sharedWorld = null; } cancelTravel(); endAim(); showTitle(); }
+function quitToTitle() { audio_set_playing(false); if (!$('#overlay').hidden) { $('#overlay').hidden = true; modal = 0; } game = null; cancelTravel(); endAim(); showTitle(); }
 
 function showTitle() {
   hideAll(); const s = $('#title'); s.hidden = false; s.innerHTML = '';
@@ -1327,7 +1554,8 @@ function showTitle() {
   if (has_save()) m.append(btn('btn main', 'Continue', () => {
     try { startGame(null, load_game()); } catch (e) { toast('That save could not be loaded'); delete_save(); showTitle(); }
   }));
-  m.append(btn('btn', 'New game', showNewGame), btn('btn', 'Shared world', showSharedWorld), btn('btn', 'Records', showRecords), btn('btn', 'How to play', () => openHelp()));
+  if (bt_has_save()) m.append(btn('btn', 'Continue battle', () => window.OB_BATTLE.resume()));
+  m.append(btn('btn', 'New game', showNewGame), btn('btn', 'Battle', () => window.OB_BATTLE.setup()), btn('btn', 'Records', showRecords), btn('btn', 'How to play', () => openHelp()));
   w.append(m);
   w.append(el('p', 'note', 'A zombie survival roguelike. Turn based, one run, one life.'));
   if (!lsSet('outbreak.probe', 1)) w.append(el('p', 'note t-warn', 'This browser blocks storage, so saving will not work here.'));
@@ -1346,7 +1574,6 @@ function showRecords() {
   }
   w.append(btn('btn', 'Back', showTitle)); s.append(w); s.scrollTop = 0;
 }
-let sharedWorld = null, sharedCtx = null;
 let newCfg = null;
 function showNewGame() {
   hideAll(); const s = $('#newgame'); s.hidden = false;
@@ -1406,14 +1633,8 @@ function showNewGame() {
   render(); s.scrollTop = 0;
 }
 
-function startGame(cfg, loaded, shared) {
-  if (sharedWorld) { sharedWorld.detach(); sharedWorld = null; }
+function startGame(cfg, loaded) {
   game = loaded || new Game(cfg);
-  if (shared) {
-    sharedWorld = new SharedWorld(shared.env.db, shared.env.uid, shared.season);
-    sharedWorld.onclose = () => { if (game && game.over) afterAction(); };
-    sharedWorld.attach(game);
-  }
   game.on_autosave = () => { trySave(); };
   endingShown = false; aim = null; travel = null; pathPreview = null; modal = 0;
   lastHp = game.player.hp; camX = game.player.x + .5; camY = game.player.y + .5;
@@ -1421,7 +1642,7 @@ function startGame(cfg, loaded, shared) {
   showGameUi();
   trySave();
   if (!loaded) showBriefing(0, true);
-  else if (game.cfg.mode !== 'normal') openSheet('Back in the world', (b) => { b.append(el('p', 'event-text story', game.cfg.mode === 'shared' ? 'The world kept going while you were away. Time runs on its own here.' : 'The world runs in real time. Nothing waits for you once you continue.'), btn('btn main', 'Continue', () => closeSheet())); }, { locked: true, onClose: startLive });
+  else if (game.cfg.mode !== 'normal') openSheet('Back in the world', (b) => { b.append(el('p', 'event-text story', 'The world runs in real time. Nothing waits for you once you continue.'), btn('btn main', 'Continue', () => closeSheet())); }, { locked: true, onClose: startLive });
 }
 
 // A short cutscene before the scorecard of a win: one frame at a time, tap to go on.
@@ -1444,9 +1665,7 @@ function showEnding(skipCut = false) {
   const g = game, e = g.over; endingShown = true; cancelTravel(); endAim();
   if (!skipCut) { audio_set_playing(false); audio_play(e.victory ? 'win' : 'lose'); }
   if (e.victory && e.scenes && e.scenes.length && !skipCut) { if (!$('#overlay').hidden) { $('#overlay').hidden = true; modal = 0; } playCutscene(e.scenes, () => showEnding(true)); return; }
-  const isShared = g.cfg.mode === 'shared';
-  if (isShared) { delete_save(null, true); if (sharedWorld) { sharedWorld.flush(); sharedWorld.detach(); sharedWorld = null; } }
-  else if (g.cfg.mode === 'normal' ? (g.cfg.permadeath || e.victory) : e.victory) delete_save();
+  if (g.cfg.mode === 'normal' ? (g.cfg.permadeath || e.victory) : e.victory) delete_save();
   if (!$('#overlay').hidden) { $('#overlay').hidden = true; modal = 0; }
   hideAll(); const s = $('#ending'); s.hidden = false; s.innerHTML = '';
   const w = el('div', 'wrap');
@@ -1460,163 +1679,8 @@ function showEnding(skipCut = false) {
   if (e.last_moments && e.last_moments.length) more.append(el('div', 'fileno', 'The last moments'), el('div', 'chron last', e.last_moments.map((l) => el('div', null, l))));
   if (more.childNodes.length) { const tg = btn('btn', 'Show the full story', () => { more.hidden = !more.hidden; tg.textContent = more.hidden ? 'Show the full story' : 'Hide the full story'; }); tg.style.marginTop = '12px'; w.append(tg, more); }
   const m = el('div', 'menu'); m.style.marginTop = '20px';
-  if (isShared) m.append(btn('btn main', 'Back to the shared world', () => { game = null; showSharedWorld(); }), btn('btn', 'Title screen', () => { game = null; showTitle(); }));
-  else m.append(btn('btn main', 'New game', () => { game = null; showNewGame(); }), btn('btn', 'Title screen', () => { game = null; showTitle(); }));
+  m.append(btn('btn main', 'New game', () => { game = null; showNewGame(); }), btn('btn', 'Title screen', () => { game = null; showTitle(); }));
   w.append(m); s.append(w); s.scrollTop = 0;
-}
-
-// ---------------------------------------------------------------- the shared world: season, keeper, join
-async function sharedEnv() {
-  if (sharedCtx) return sharedCtx;
-  try {
-    if (typeof claude === 'undefined' || !claude.use) return null;
-    const db = await claude.use('db'); if (!db) return null;
-    const user = await claude.use('user');
-    sharedCtx = { db, uid: user ? await user.id() : null, canWrite: user ? await user.can('data.write') : null, isAdmin: user ? await user.canEdit() : false };
-    return sharedCtx;
-  } catch (e) { return null; }
-}
-const fmtLeft = (sec) => { const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
-
-async function showSharedWorld(msg) {
-  hideAll(); const s = $('#newgame'); s.hidden = false; s.innerHTML = '';
-  const w = el('div', 'wrap form');
-  w.append(el('div', 'fileno', 'Hardcore · one world for everyone'), el('h2', 'logo', 'Shared world'));
-  w.firstChild.nextSibling.style.fontSize = '36px';
-  s.append(w);
-  const note = (t, cls) => w.append(el('p', 'note ' + (cls || ''), t));
-  note('Loading the world...');
-  const env = await sharedEnv();
-  w.querySelector('p.note').remove();
-  const back = () => w.append(btn('btn', 'Back', showTitle));
-  if (!env) { note('The shared world needs this page to be opened from claude.ai, signed in, with the owner\'s sharing on. In a plain browser it cannot reach the shared database.', 't-warn'); back(); return; }
-  let season = null, outcome = null;
-  try {
-    const sd = await env.db.doc('season/current').get(); season = sd.exists ? sd.data() : null;
-    const od = await env.db.doc('play/outcome').get(); outcome = od.exists ? od.data() : null;
-  } catch (e) { note('The shared database did not answer. Try again in a moment.', 't-warn'); back(); return; }
-  if (msg) note(msg, 't-good');
-  const now = Date.now();
-  if (outcome && season && outcome.season !== season.n) outcome = null;
-  const over = season && (now >= season.endsAt || outcome);
-  if (!season) note(env.isAdmin ? 'There is no world yet. You are the keeper: create the first season.' : 'There is no world yet. The keeper has not created one.');
-  else {
-    const dayN = season_day(season, now), cfg = season.cfg;
-    w.append(el('h3', null, `Season ${season.n}`));
-    const kv = el('dl', 'kv');
-    const add = (k, v) => kv.append(el('dt', null, k), el('dd', null, v));
-    add('Calendar', `day ${dayN} (${season.dayMs / 3600000} real hours per day)`);
-    add('Real time', `live: a step every ${season.tickMs || 700} ms, a sun cycle every ${Math.round(240 * (season.tickMs || 700) / 1000 / 60 * 10) / 10} min`);
-    add('Resets in', over ? 'over' : fmtLeft(Math.max(0, Math.floor((season.endsAt - now) / 1000))));
-    add('The world', `${CONTENT.eras[cfg.era].year} · ${CONTENT.presets[cfg.zombies].name.split(' - ')[0]} · ${CONTENT.scenarios[cfg.scenario].name.split(' - ')[0]} · ${cfg.difficulty}`);
-    if (outcome) add('Outcome', outcome.kind === 'won' ? `The cure was made on day ${outcome.day}.` : 'The way out closed. Nobody made it.');
-    w.append(kv);
-    if (over) note(outcome ? 'This season is decided. The keeper will reset the world.' : 'This season has ended. The keeper will reset the world.');
-    else {
-      note('Every survivor shares one seeded world. The dead you destroy stay dead for everyone, your tomb keeps your gear for the next, whatever killed you gets a name and a level, and enemies keep levelling while nobody plays. It runs in real time, with no turns and no pause, but you do not see other players move.');
-      if (env.canWrite === false) note('You can read this world but not play in it: ask the owner for contributor access.', 't-warn');
-      else {
-        w.append(btn('btn main', 'Join the world', () => showSharedJoin(env, season)));
-        if (has_save(null, true)) w.append(btn('btn', 'Continue my survivor', () => {
-          try { const g = load_game(null, true); if (g.season_n !== season.n) { delete_save(null, true); showSharedWorld('That survivor belonged to an earlier season.'); return; } startGame(null, g, { env, season }); }
-          catch (e) { delete_save(null, true); showSharedWorld('That save could not be loaded.'); }
-        }));
-      }
-    }
-  }
-  if (env.isAdmin) w.append(btn('btn', season ? 'Keeper: reset or reconfigure' : 'Keeper: create the world', () => showKeeper(env, season)));
-  back();
-}
-
-function showSharedJoin(env, season) {
-  hideAll(); const s = $('#newgame'); s.hidden = false; s.innerHTML = '';
-  const cfg = season.cfg, era = CONTENT.eras[cfg.era], pick = { origin: 'medic', opening: 'random' };
-  const render = () => {
-    s.innerHTML = '';
-    const w = el('div', 'wrap form');
-    w.append(el('div', 'fileno', `Season ${season.n}`), el('h2', 'logo', 'Arrive'));
-    w.querySelector('h2').style.fontSize = '36px';
-    const group = (title, key, items, blurb) => {
-      w.append(el('h3', null, title));
-      const box = el('div', 'opts cols');
-      for (const [id, name] of items) { const o = el('button', 'opt' + (pick[key] === id ? ' on' : ''), [el('b', null, name)]); o.type = 'button'; o.addEventListener('click', () => { pick[key] = id; render(); }); box.append(o); }
-      w.append(box, el('div', 'blurb', blurb()));
-    };
-    group('Who you are', 'origin', Object.values(CONTENT.origins).map((o) => [o.id, era.origin_names[o.id]]), () => CONTENT.origins[pick.origin].blurb);
-    group('How you arrive', 'opening', [['random', 'Surprise me']].concat(Object.values(CONTENT.openings).map((o) => [o.id, o.name])),
-      () => (pick.opening === 'random' ? 'Picked from who you are.' : CONTENT.openings[pick.opening].scenes[cfg.era]));
-    const go = el('div', 'sticky'); const start = btn('btn main', 'BEGIN', () => {
-      start.textContent = 'Generating the world...'; start.disabled = true;
-      setTimeout(() => { try { startGame(Object.assign({}, cfg, { mode: 'shared', seed: season.seed, origin: pick.origin, opening: pick.opening, season_n: season.n, clock_turn: season_turn(season, Date.now()) }), null, { env, season }); }
-        catch (e) { console.error(e); start.textContent = 'Failed: ' + e.message; } }, 30);
-    });
-    go.append(start); w.append(go, btn('btn', 'Back', () => showSharedWorld()));
-    s.append(w);
-  };
-  render(); s.scrollTop = 0;
-}
-
-function showKeeper(env, season) {
-  hideAll(); const s = $('#newgame'); s.hidden = false; s.innerHTML = '';
-  const base = season ? Object.assign({}, season.cfg) : { era: 'modern', zombies: 'classic', scenario: 'cure', difficulty: 'normal', needs: false, map_w: 360, map_h: 240 };
-  const num = { days: season ? Math.round((season.endsAt - season.startedAt) / 86400000) : 7, hours: season ? season.dayMs / 3600000 : 3, tick: season ? (season.tickMs || 700) : 700 };
-  let armed = false;
-  const render = (msg) => {
-    s.innerHTML = '';
-    const w = el('div', 'wrap form');
-    w.append(el('div', 'fileno', 'Keeper'), el('h2', 'logo', 'The world'));
-    w.querySelector('h2').style.fontSize = '36px';
-    w.append(el('p', 'note', 'These rules apply to the next season. Resetting ends the current one for everyone, clears its tombs, named enemies and kills, and picks a new seed.'));
-    const group = (title, key, items) => {
-      w.append(el('h3', null, title));
-      const box = el('div', 'opts cols');
-      for (const [id, name] of items) { const o = el('button', 'opt' + (base[key] === id ? ' on' : ''), [el('b', null, name)]); o.type = 'button'; o.addEventListener('click', () => { base[key] = id; armed = false; render(); }); box.append(o); }
-      w.append(box);
-    };
-    group('Era', 'era', Object.values(CONTENT.eras).map((e) => [e.id, e.year]));
-    group('The dead', 'zombies', Object.values(CONTENT.presets).map((z) => [z.id, z.name.split(' - ')[0]]));
-    group('Goal', 'scenario', Object.values(CONTENT.scenarios).map((c) => [c.id, c.name.split(' - ')[0]]));
-    group('Difficulty', 'difficulty', ['easy', 'normal', 'hard'].map((d) => [d, cap(d)]));
-    const numRow = (label, key, min, max, sub) => {
-      w.append(el('h3', null, label));
-      const row = el('div', 'seed'); const inp = el('input'); inp.type = 'number'; inp.value = num[key]; inp.min = min; inp.max = max; inp.inputMode = 'decimal';
-      inp.addEventListener('input', () => { const v = parseFloat(inp.value); if (v >= min && v <= max) { num[key] = v; armed = false; } });
-      row.append(inp, el('span', 'note', sub)); w.append(row);
-    };
-    numRow('Season length (real days)', 'days', 0.1, 90, 'days until the world resets');
-    numRow('Calendar day (real hours)', 'hours', 0.1, 48, 'real hours per calendar day: enemy level cap, zombie phases, the deadline');
-    numRow('Tick (milliseconds)', 'tick', 200, 3000, 'the world runs live: one step every tick. Day and night turn every 240 ticks');
-    if (msg) w.append(el('p', 'note t-good', msg));
-    const label = season ? (armed ? 'Tap again: reset the world now' : `Reset the world (end season ${season.n})`) : 'Create the world';
-    w.append(btn('btn ' + (armed ? 'danger' : 'main'), label, async () => {
-      if (season && !armed) { armed = true; render(); return; }
-      try { const next = await reset_world(env.db, season, base, Date.now(), { dayMs: num.hours * 3600000, seasonMs: num.days * 86400000, tickMs: num.tick }); showSharedWorld(`Season ${next.n} has begun.`); }
-      catch (e) { render('Could not write: ' + (e && e.code || e)); }
-    }));
-    w.append(btn('btn', 'Back', () => showSharedWorld()));
-    s.append(w);
-  };
-  render(); s.scrollTop = 0;
-}
-
-// in-game: how the season is going
-function openWorld() {
-  const g = game, sw = g.shared; if (!sw) return;
-  const sm = sw.summary();
-  openSheet(`Season ${sm.n}`, (body) => {
-    const kv = el('dl', 'kv');
-    const add = (k, v) => kv.append(el('dt', null, k), el('dd', null, v));
-    add('Calendar day', String(sm.day)); add('Resets in', fmtLeft(sm.seconds_left)); add('Survivors fallen', String(sm.fallen));
-    add('Enemy level cap', String(level_cap(g)));
-    body.append(kv);
-    if (sm.outcome) body.append(el('p', 'note', sm.outcome.kind === 'won' ? 'The cure has been made.' : 'The way out has closed.'));
-    body.append(el('h3', 'sec', 'Named enemies still out there'));
-    if (!sm.named.length) body.append(el('p', 'note', 'None yet.'));
-    for (const d of sm.named) body.append(el('div', 'row', [el('div', 'main', [el('div', 'name', `${d.name}`), el('div', 'sub', d.title)])]));
-    body.append(el('h3', 'sec', 'Hall of the fallen'));
-    if (!sm.hall.length) body.append(el('p', 'note', 'Nobody has fallen yet.'));
-    for (const h of sm.hall.slice(0, 12)) body.append(el('div', 'row', [el('div', 'main', [el('div', 'name', `${h.label} · level ${h.level}`), el('div', 'sub', `day ${h.day}: ${h.cause}`)])]));
-  });
 }
 
 // ---------------------------------------------------------------- boot
@@ -1631,6 +1695,16 @@ function boot() {
   loadSprites();
   showTitle();
   requestAnimationFrame(frame);
+  // what the battle front-end (battle_ui.js) borrows: the screens and the sprite atlas
+  window.OB_UI = { hideAll, showTitle, lsGet, lsSet, prefs,
+    sprite: (c, era, name, px, py, w) => {
+      if (typeof SPRITE_DATA === 'undefined' || prefs.sprites === false) return false;
+      const set = SPR_SETS[SPRITE_DATA.era[era] || SPRITE_DATA.default] || SPR_SETS[SPRITE_DATA.default], m = set && set.map[name];
+      if (!m) return false;
+      c.imageSmoothingEnabled = false;
+      c.drawImage(set.img, m[0] * set.s, m[1] * set.s, set.s, set.s, px, py, w + 0.5, w + 0.5);
+      return true;
+    } };
   window.OB_DEBUG = { get game() { return game; }, get view() { return view; }, showEvent, showEnding, refresh, openDoc, afterAction, start: (cfg) => startGame(Object.assign(default_config(), cfg)), prefs, openMenu, openInventory, openDocs, openSkills, openPlaces, openCraft, openStatus };
 }
 boot();

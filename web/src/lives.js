@@ -21,7 +21,7 @@ function level_up(game, a, announce = true) {
 function grant_xp(game, killer, value) {
   if (!killer || killer.kind === 'player' || killer.hp <= 0 || !living(game)) return;
   killer.lvl = killer.lvl || 1; killer.lvl_xp = (killer.lvl_xp || 0) + value;
-  while (killer.lvl < level_cap(game) && killer.lvl_xp >= 8 * killer.lvl) { killer.lvl_xp -= 8 * killer.lvl; level_up(game, killer); if (game.shared) game.shared.on_enemy_level(killer); }
+  while (killer.lvl < level_cap(game) && killer.lvl_xp >= 8 * killer.lvl) { killer.lvl_xp -= 8 * killer.lvl; level_up(game, killer); }
 }
 
 const label_of = (game, generation, origin_id) => `${game.era.origin_names[origin_id]} #${generation}`;
@@ -41,11 +41,11 @@ function player_died(game, kind, cause) {
   const label = label_of(game, game.generation, game.current_origin);
   const record = { label, level: p.level, day: game_day(game), kills: p.kills, cause: cause || (kind === 'turned' ? 'turned' : 'died'), kind };
   game.fallen.push(record);
-  const gear = [p.weapon, p.armor, p.light].concat(p.inventory).filter((i) => i);
+  const gear = [p.weapon, p.armor, p.light, p.shield].concat(p.inventory).filter((i) => i);
   for (const item of gear) lv.drop([p.x, p.y], item);
-  const death_pos = [p.x, p.y], death_level = lv.id, death_key = lv.idx(p.x, p.y);
   if (lv.occ.get(lv.idx(p.x, p.y)) === p) lv.occ.delete(lv.idx(p.x, p.y));
   lv.corpses[lv.idx(p.x, p.y)] = [game.clock.turn, 2];
+  mount_on_player_death(game, lv, [p.x, p.y]);
   game.fallen_bodies[`${lv.id}|${lv.idx(p.x, p.y)}`] = record;
   const killer = game.killer && game.killer.hp > 0 ? game.killer : null;
   game.killer = null;
@@ -59,7 +59,8 @@ function player_died(game, kind, cause) {
   const new_origin = rng.choice(origins.length ? origins : Object.keys(CONTENT.origins));
   const refuge = game.pois[game.refuge_id], world = game.world.level;
   gen_near(game, refuge.x, refuge.y);
-  const pos = world.free_spot_near(refuge.x, refuge.y + 2, 8) || world.free_spot_near(game.world.start[0], game.world.start[1], 8);
+  const fallen_refuge = !!(game.saga && game.saga.refuge_fallen);
+  const pos = (!fallen_refuge && world.free_spot_near(refuge.x, refuge.y + 2, 8)) || world.free_spot_near(game.world.start[0], game.world.start[1], 8);
   const known = Array.from(game.know.known).sort();
   const keep = Math.floor(known.length * KEEP_KNOWLEDGE), kept = [];
   for (let i = 0; i < keep; i++) kept.push(known.splice(rng.randint(0, known.length - 1), 1)[0]);
@@ -77,6 +78,7 @@ function player_died(game, kind, cause) {
   np.max_hp += 3 * (np.level - 1); np.hp = np.max_hp;
   if (game.live_started) game.invuln_until = game.clock.turn + 40;
   game.ring = null; game.final = null; game.pending_event = null; game.followers = [];
+  front_reset(game);
   game.heat = Math.min(game.heat, 30.0);
   for (const a of world.actors) if (a.kind === 'human' && (a.state === 'follow' || a.state === 'wait')) a.state = 'patrol';
   game.companion_uid = 0; game.pet_uid = 0;
@@ -87,8 +89,4 @@ function player_died(game, kind, cause) {
     `the vaults are as they left them, and the clock keeps running.\n\n` +
     `${new_label} ${home ? 'wakes in the base you built' : 'reaches ' + game.era.refuge}. They know part of what the journals say, and they start at level ${np.level}.`;
   game.msg(`${label} has died. ${new_label} takes up the search.`, 'bad', true);
-  if (game.shared) {
-    game.shared.on_player_died({ label, level: p.level, x: death_pos[0], y: death_pos[1], level_id: death_level, key: death_key, cause: record.cause, record, killer,
-      items: gear.map((i) => ({ id: i.id, qty: i.qty, dur: i.dur === undefined ? null : i.dur, key: !!i.key })) });
-  }
 }

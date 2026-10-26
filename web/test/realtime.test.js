@@ -1,6 +1,5 @@
 const assert = require('assert');
 const { OB, make } = require('./helpers');
-const { FakeStore } = require('./fakedb');
 
 function quiet(g) { const lv = g.world.level; for (const a of lv.actors.slice()) if (a.kind !== 'player') lv.remove_actor(a); g.hordes.length = 0; return lv; }
 
@@ -59,30 +58,11 @@ function quiet(g) { const lv = g.world.level; for (const a of lv.actors.slice())
   assert(g.ready()); assert(p.hp > 5, 'sleep did not heal on waking');
 }
 
-// shared world: the clock is anchored to the season, so everyone shares the sun; long absences jump
-(async () => {
-  const store = new FakeStore(); let now = 5_000_000_000;
-  const cfg0 = { era: 'modern', zombies: 'classic', scenario: 'cure', difficulty: 'normal', needs: false, map_w: 120, map_h: 76 };
-  const season = OB.new_season(null, cfg0, now, { seed: 5, tickMs: 500, dayMs: 3600e3 });
-  assert.strictEqual(season.tickMs, 500);
-  await store.db().doc('season/current').set(season);
-  const mk = async (uid, origin) => {
-    const g = OB.make_game(Object.assign({}, cfg0, { mode: 'shared', seed: season.seed, origin, opening: 'meal', season_n: 1, clock_turn: OB.season_turn(season, now) }));
-    const sw = new OB.SharedWorld(store.db(), uid, season, () => now); sw.attach(g); g.start_live(now); return [g, sw];
-  };
-  now += 60_000;
-  const [A] = await mk('uA', 'medic'); now += 7_000; const [B] = await mk('uB', 'soldier');
-  assert.strictEqual(A.clock.turn, Math.floor(60_000 / 500)); assert.strictEqual(B.clock.turn, Math.floor(67_000 / 500));
-  A.live_update(now); assert.strictEqual(A.clock.turn, B.clock.turn, 'players must share the same instant');
-  now += 5_000; A.live_update(now); B.live_update(now);
-  assert.strictEqual(A.clock.turn, B.clock.turn); assert.strictEqual(A.clock.hour, B.clock.hour);
-  const before = A.clock.turn; now += 6 * 3600e3; A.live_update(now);
-  assert(A.clock.turn - before > 1000 && A.clock.turn === Math.floor((now - season.startedAt) / 500) - 0 || A.clock.turn >= Math.floor((now - season.startedAt) / 500) - 3, 'did not jump to the present');
-  assert(OB.game_day(A) >= 7);
-  // death while live gives a moment of grace, then the world continues in real time
-  const gA = A, lv = gA.world.level;
-  gA.player.hp = 0; gA.end('dead', 'x');
-  assert(gA.invuln_until > gA.clock.turn);
-  const hp = gA.player.hp; OB.damage_player(gA, 30, 'x'); assert.strictEqual(gA.player.hp, hp, 'new survivor should be briefly protected');
-  console.log('realtime: live ticks, busy time, rest, sleep, shared sun, long absence OK');
-})().catch((e) => { console.error(e); process.exit(1); });
+// death while live gives the next survivor a moment of grace, then the world goes on in real time
+{
+  const g = OB.make_game({ mode: 'living', seed: 5, map_w: 120, map_h: 76 }); g.start_live(1000);
+  g.player.hp = 0; g.end('dead', 'x');
+  assert(!g.over && g.generation === 2); assert(g.invuln_until > g.clock.turn);
+  const hp = g.player.hp; OB.damage_player(g, 30, 'x'); assert.strictEqual(g.player.hp, hp, 'new survivor should be briefly protected');
+}
+console.log('realtime: live ticks, busy time, rest, sleep, grace after death OK');

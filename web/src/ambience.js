@@ -29,8 +29,9 @@ const hearing_scale = (game) => outdoors(game) ? (WEATHER_HEARING[game.weather] 
 const sight_scale = (game) => outdoors(game) ? (WEATHER_SIGHT[game.weather] || 1.0) : 1.0;
 
 function weather_tick(game) {
-  const t = game.clock.turn;
-  if (t % WEATHER_EVERY === 0 && t > 0) {
+  const t = game.clock.turn, forced = saga_forced_weather(game);
+  if (forced) game.weather = forced;                          // a world event holds the weather
+  else if (t % WEATHER_EVERY === 0 && t > 0) {
     const options = WEATHER_NEXT[game.weather];
     let pick = game.rng.random() * options.reduce((s, o) => s + o[1], 0), nw = options[options.length - 1][0];
     for (const [name, w] of options) { pick -= w; if (pick <= 0) { nw = name; break; } }

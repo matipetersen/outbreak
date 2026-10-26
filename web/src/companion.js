@@ -60,7 +60,7 @@ function comp_carry(game, old, target, dest, from_pos) {
   old.remove_actor(c); c.x = spot[0]; c.y = spot[1]; target.add_actor(c);
 }
 
-function comp_say(game, c, text) { game.msg(`${c.name}: ${text}`, 'ally'); }
+function comp_say(game, c, text) { game.msg(`${c.name}: ${dlg_when(game, text)}`, 'ally'); }
 function comp_note(game, text, key = false) { game.msg(text, 'ally', key); }
 function comp_add_bond(c, n) { c.bond = Math.max(0, Math.min(100, (c.bond || 0) + n)); }
 function comp_describe(c) {
@@ -403,13 +403,13 @@ function comp_on_death(game, h, killer) {
 function comp_talk(game, c) {
   const a = comp_arch(c), t = game.clock.turn;
   if (c.story < 3 && c.bond >= COMP_STORY_AT[c.story]) {
-    const line = a.backstory[c.story]; c.story += 1;
+    const line = dlg_when(game, a.backstory[c.story]); c.story += 1;
     const reward = comp_reward(game, c);
     comp_say(game, c, line);
     return `${c.name}: ${line}\n${reward}`;
   }
   const extra = COMP.situation[game.is_dark() ? 'night' : 'warning'][0];
-  const line = game.rng.choice(a.idle.concat([extra]));
+  const line = dlg_when(game, game.rng.choice(a.idle.concat([extra])));
   if (t - c.lasttalk > 200) comp_add_bond(c, 1);
   c.lasttalk = t;
   game._spend(1);

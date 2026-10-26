@@ -91,7 +91,6 @@ function kill_zombie(game, z, head = false, by_player = true, killer = null) {
   const level = game.level;
   sfx(game, 'kill', apos(z));
   grant_xp(game, killer, z.xp);
-  if (game.shared) game.shared.on_enemy_death(z);
   level.remove_actor(z);
   level.corpses[level.idx(z.x, z.y)] = [game.clock.turn, z.fresh_human];
   for (const item of z.carries) level.drop(apos(z), item);
@@ -185,7 +184,6 @@ function kill_human(game, h) {
   comp_on_player_kills_human(game, h);
   memory_on_kill_human(game, h);
   const level = game.level;
-  if (game.shared) game.shared.on_enemy_death(h);
   level.remove_actor(h);
   level.corpses[level.idx(h.x, h.y)] = [game.clock.turn, true];
   for (const item of h.loot) level.drop(apos(h), item);
@@ -311,8 +309,10 @@ function zombie_attack(game, z) {
   const p = game.player, profile = game.profile;
   if (game.clock.turn < game.invuln_until) return;
   if (game.rng.random() * 100 >= clamp(z.acc - p.evade, 15, 92)) { game.msg(`The ${z.name.toLowerCase()} lunges and misses.`, 'combat'); return; }
+  if (shield_block(game, z)) return;
   const armor = p.armor ? game.item_def(p.armor.id) : null;
   const raw = game.rng.randint(z.dmg[0], z.dmg[1]) * game.diff.damage;
+  if (game.riding && mount_take_hit(game, raw)) return;
   const dmg = Math.max(1, Math.round(raw - (armor ? armor.defense : 0)));
   if (armor && p.armor.dur !== null) {
     p.armor.dur -= 1;
@@ -338,6 +338,8 @@ function human_attack(game, h) {
   if (game.rng.random() * 100 >= clamp(h.acc - p.evade - (d - 1) * 2, 12, 90)) {
     game.msg(`The ${h.name.toLowerCase()} ${d > 1 ? 'shoots' : 'swings'} and misses.`, 'combat'); return;
   }
+  if (shield_block(game, h)) return;
+  if (game.riding && mount_take_hit(game, game.rng.randint(h.dmg[0], h.dmg[1]) * game.diff.damage)) return;
   const armor = p.armor ? game.item_def(p.armor.id) : null;
   const dmg = Math.max(1, Math.round(game.rng.randint(h.dmg[0], h.dmg[1]) * game.diff.damage - (armor ? armor.defense : 0)));
   game.msg(`The ${h.name.toLowerCase()} hits you for ${dmg}.`, 'bad');
@@ -379,6 +381,7 @@ function attack_actor(game, attacker, defender, ranged = false) {
     return;
   }
   if (defender.hp <= 0) { kill_human_other(game, defender, attacker); return; }
+  if (defender.kind === 'human' && attacker.kind === 'zombie') npc_bitten(game, attacker, defender);
   if (defender.kind === 'human') {
     if (defender.state !== 'follow' && defender.state !== 'wait') { defender.state = 'hunt'; defender.target = apos(attacker); }
     _distress(game, defender);
@@ -400,10 +403,10 @@ function _distress(game, h) {
 // A human dies to something other than the player. Victims of the dead rise again (corpse flag 2).
 function kill_human_other(game, h, killer) {
   raiders_shaken(game, h);
+  { const o = h.outpost && game.saga && game.saga.outposts[h.outpost]; if (o && o.owner === h.faction) o.garrison = Math.max(0, o.garrison - 1); }      // a dead guard is one fewer
   comp_on_death(game, h, killer);
   const level = game.level;
   grant_xp(game, killer, 12);
-  if (game.shared) game.shared.on_enemy_death(h);
   level.remove_actor(h);
   level.corpses[level.idx(h.x, h.y)] = [game.clock.turn, killer.kind === 'zombie' ? 2 : 1];
   for (const item of h.loot) level.drop(apos(h), item);

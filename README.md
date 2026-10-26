@@ -40,14 +40,18 @@ speed, senses, how the infection spreads, intelligence, decay over the days, and
   The deadline is computed from the route (the farther the parts and the extraction point are, the longer you get: about 96
   tiles of real progress a day, plus time for every vault), never less than 10 days.
 * `dash` - no parts, only the road: get to the extraction point before the way closes and hold out. A shorter, more
-  physical run, with five incidents on the way.
+  physical run, with five incidents on the way. **In the web game Dash is a different mode**: no calendar and no siege, a
+  tide of the dead rolling up the road behind you, and a transport you have to board before it leaves (see *Dash: the tide*
+  below).
 * `endless` - no exit and no clock. Live as long as you can, or gather the three components and the formula
   and make the cure at the refuge, which ends it with a win. Nobody starts bitten. Every day past the third the
   world gets worse, without limit: the dead get +6% a day of health and damage (up to x3), hordes and ambient
   spawns grow with it, and in hardcore the enemy level cap rises with the calendar (up to 40, not 15). To keep
   a long life possible, vaults and containers you emptied refill (about half of them) every 4 days. Dying
   is a survival result ("Survived 23 days") with a bigger score per day. Combined with `living` it is the eternal
-  hardcore world.
+  hardcore world. **In the web game the endless world has phases, factions with outposts, world events, people living in
+  your base and three endings of its own** (see *The endless world* below); the curve is gentler there (+3.5% a day, up to
+  x2.4) because the danger comes from what the world does, not from bigger numbers.
 
 On the road to the extraction point (`extraction` and `dash`) things happen: wrecked convoys, an abandoned checkpoint, a
 bridge that is out, a column of refugees, an ambush, the dead crossing the road. Each is placed on the route when the world
@@ -56,6 +60,92 @@ is created and fires once when you get close. Choices cost items, health, humani
 
 All three end with a hold-out finale. Who shows up depends on your **humanity**: the Alpha if you stayed human,
 armed people who have heard about you if you did not.
+
+**News needs a source (web only).** In endless you only hear about what your character could know: places you have seen,
+been told of by someone (what an NPC tells you goes on your map), or that are close enough to hear (25 tiles); factions only
+once you have seen one of their buildings or talked to one of them. A radio (the base project) hears the whole city.
+Public broadcasts (a supply drop, a firebreak warning, the blood moon, the weather) still reach everyone. What happens at
+your base while you are away (the morning report, a raid) is told when you walk back in. And people speak of time by the
+calendar: lines written for weeks into the collapse ("they stripped us of rank on day three", "a radio that stopped talking
+weeks ago") follow the game day until enough time has passed.
+
+**Horses (web only).** Small herds of wild horses (striders on the station) graze on open ground away from the city:
+about one chunk in three that has some, never in the woods or within 25 tiles of the start. They notice you from 6 tiles
+(3 creeping) and bolt like deer. Get next to one (tap it or ACT) and offer food: 30%, +20% creeping, +15% with wild greens,
++10% if you are decent; a refusal sends it running. Tamed, it follows you or waits, heals slowly and shies from the dead.
+To ride you need a **saddle** (Craft: 3 cloth, 1 wood, 1 scrap). On horseback you cover two tiles a turn, three at a gallop
+(RUN), spend no stamina and cannot creep, but hooves are loud (noise 6, 10 at a gallop). You cannot ride indoors: going
+through a door leaves it tied outside. 45% of the blows aimed at the rider land on the horse; under 35% health it may throw
+you (4 damage) and bolt, and if it dies you are thrown and it is lost. Tap the horse chip for its sheet. (`web/src/mounts.js`,
+the sprite is drawn in `web/art/animals.py`)
+
+**The bite is for everyone (web only).** The dead used to only hurt the living around you. Now a zombie's bite infects
+them by the same rule as you: the strain's chance per bite, less what their armour stops (soldiers 30%, scouts and guards
+15%, raiders 10%, your companion whatever you gave them to wear), a fever on the strain's own clock, and at the end they
+get up as one of the dead where they stand ("Turned ..."), hunting you. The opening grace still protects your people. Your
+companion tells you when they are bitten, and their sheet offers what you have yourself: cut off a bitten arm or leg in time
+with a blade (they live, weaker, and closer to you), a suppressant to slow it, or letting them go before it happens (they
+do not get up). An outpost guard who dies or turns is one fewer in its garrison. In endless, people at your base can be
+bitten in a raid or on a scavenging run: the fever starts the next morning, and the morning after they turn and hurt (and
+may bite) others, unless you cut it off before the fever or let them go. (`web/src/contagion.js`)
+
+**Crafting weapons, arrows and shields (web only).** Every weapon recipe (nail club, ground blade, reinforced spear, scrap
+bow, the era's own bow and spear where it has them), arrows (the era's arrows or darts, and improvised shafts) and two
+shields are known from the start and can be made anywhere. A workshop no longer gates them: beside one the work takes the
+listed time and comes out in full condition; away from one it takes half as long again, weapons and shields come out at 60%
+condition, and arrows one fewer. Shields are a new item worn in the off hand (Pack > Off hand): a plank shield blocks 22% of
+the blows that land (zombies and people alike), a reinforced one 34%; each block costs it condition (two against heavy hitters)
+until it splits. They need the other hand free, so they do nothing with a bow, a polearm or a long gun (a pistol is fine).
+(`web/src/crafting.js`)
+
+**Dash: the tide (web only).** Dash and Extraction used to be the same run with one phase removed. In the web game Dash is
+a pursuit: a front of the dead rolls up the road from where you started towards the way out at about 0.42 tiles a turn
+(x0.85 easy, x1.15 hard, faster at night), after a short grace. It is a line, not a crowd: what matters is how far along the
+road you are (inside a building, the building's door counts). Everything you stop for costs ground: searching a building,
+a night's sleep, a road incident's lost hours (`time` in an event moves the tide on by what it would have walked). The HUD
+shows how far behind it is, with warnings at 30, 15 and 6 tiles. If it reaches you the dead come at you from every side,
+more the further it has rolled past; 30 tiles past you, it is over ("Swallowed by the tide"). Buildings it has rolled over
+fill with the dead. The way out is known from the start. Within 22 tiles of it the transport starts loading: you have 60
+turns to reach its doors, and the tide closes in behind you for the last stretch. Stepping through the doors is the win:
+no bench, no hold-out, no break-out. In hardcore the next survivor gets a race of their own. (`web/src/front.js`)
+
+**The endless world (web only).** Endless used to be one curve and the hero's journey on a loop. Now the world moves on
+by itself (`web/src/saga.js`, `web/src/factions.js`):
+* *Phases* that change the rules: the Collapse (days 1-4), the Scramble (5-12), the Holdouts (13-25), the Long Winter
+  (26-40) and the End of Days (41+). Each one sets how much refills in looted buildings, how well foraging works, what things
+  cost, how many of the dead wander, and which world events can happen. The Director walks a window of the journey that
+  fits the phase instead of looping it. When the Holdouts begin the soldiers come apart: half their outposts turn raider.
+* *Factions with outposts.* The era's five factions (soldiers, civilians, raiders, the cult, the people looking for a cure)
+  start with a handful of buildings each. Once a day they gain or lose supplies and strength, move into empty buildings
+  near their own, fight hostile neighbours (raiders fight everyone; the cult fights soldiers and scientists; soldiers and
+  scientists fall out in the Holdouts; the civilians and the cult in the Winter), and lose garrison to passing hordes. An
+  outpost that loses its last defender is taken by the winner or falls to the dead. What happens is reported each day
+  (places you know, or anywhere once you have a radio) and kept in *Menu > The world*.
+* *Outposts are places.* The ground floor of an outpost holds its garrison and the one in charge, and the dead are
+  cleared from it. At the door a voice behind a barricade stops you, unless they like you: talk your way in, pay, offer
+  food, back out, or force it (the whole building turns on you). Raider dens shoot on sight. Inside, the one in charge
+  trades (prices by your standing with them), takes requests (food, medicine during a fever), lets you sleep, and can spare
+  someone to come with you or to live at your base. Kill a hostile garrison to the last and the building is empty and
+  yours to claim. You cannot claim a building someone holds.
+* *Sieges and calls for help.* Friendly outposts get surrounded: you hear about it, the dead are at their doors when you
+  arrive, and breaking the siege earns their thanks (+15 standing, a gift); ignore it and it costs them.
+* *World events*, announced before they land (twice as early with a radio): a supply drop (marked, contested), a voice
+  on the air (sometimes true, sometimes bait), the grey (fog for days), a migration (a huge horde crossing the map), a
+  firebreak (a district burned: buildings emptied, outposts gutted, fire on the ground), the change (more of the special
+  dead, for good), a blood moon (a night of raids), a fever at an outpost, a war between two factions (you choose a side
+  or none), the cult's procession to open someone's doors (stand in its way or not), a warlord who unites the raiders
+  (kill them in their seat and the raiders break), famine and cold (prices, food, foraging, stamina), and, at the end of
+  days, the fall of the old refuge.
+* *Your people.* Room for one, plus two for every cot you build (up to four cots). Your companion can stay at the base, and anyone there
+  can come out with you. People also come from outposts, from refugees at your door, and from true broadcasts. Each has a
+  job: guard (holds the walls when you are away and thins the raids when you are not), scavenge (brings things back from
+  nearby buildings, with a risk that grows with the phase), medic, build, grow food (greenhouse) and research
+  (laboratory). Every morning at six they eat from the locker and report; hungry people lose heart and leave.
+* *Projects* built together over days: a radio, a lookout, a greenhouse, an infirmary, a wall, a generator, a laboratory
+  and a vehicle, each with an effect. Materials come from your pack and the locker (base structures too).
+* *Three endings besides death*, each a final stand of 40-60 turns at your base with no door to run for: the cure
+  (laboratory, 100 research, the three components and the deciphered formula), the exodus (finish the vehicle) and the
+  sanctuary (a radio, three allied outposts, day 20). The old refuge's bench no longer makes the cure in endless.
 
 **Raiders are a squad, not a target.** Camps are no longer a clearing with some men standing in it:
 * *Ambushes.* Half of a camp's raiders lie hidden in cover 4-9 tiles round it. They are not drawn, not targeted and not
@@ -418,12 +508,11 @@ the first turn; `B` re-reads it.
   maximum 15). Big hordes keep every zombie instead of dropping the ones that do not fit on screen.
 
 The web build also has a much larger map (360x240) planned whole and painted by chunks as you approach (see
-`web/README.md`); the terminal game keeps its fixed 120x76 map. In the web build the hardcore modes run in **real time** (no turns), and there is a third mode, a **shared world** with seasons
-that the keeper resets; see `web/README.md`. Those are web only (real time and the artifact database).
+`web/README.md`); the terminal game keeps its fixed 120x76 map. In the web build hardcore runs in **real time** (no turns); see `web/README.md`.
 
 **Random**: era, the dead, objective, who you are and mode can each be set to `random` (the new-game screen has a Random
 option on each choice and a "random everything" entry; `--era random` ... or `--random` on the command line). It is drawn when
-the game starts, reproducibly if you also give a seed, and the log says what came up. The shared world is never drawn.
+the game starts, reproducibly if you also give a seed, and the log says what came up.
 
 ## How it plays
 

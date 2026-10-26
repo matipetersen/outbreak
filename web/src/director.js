@@ -12,7 +12,8 @@ function dir_state(game) {
 
 function dir_progress(game) {
   const sc = game.scenario;
-  if (sc.escalates) return (((game.clock.turn / 240.0) % 9.0) / 9.0) * 0.95;
+  if (sc.escalates) return game.saga ? saga_dir_progress(game) : (((game.clock.turn / 240.0) % 9.0) / 9.0) * 0.95;
+  if (game.front) return game.front.depart ? 0.95 : Math.min(0.9, 0.04 + 0.9 * front_progress(game));
   const reqs = game.requirements(), r = reqs.length ? reqs.filter((q) => q[1]).length / reqs.length : 0.0;
   const horizon = 240.0 * (game.deadline_days || 10), c = Math.min(1.0, game.clock.turn / horizon);
   let s = 0.65 * r + 0.35 * c;

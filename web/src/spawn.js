@@ -35,7 +35,7 @@ function make_zombie(game, special_id, x, y, fresh = false) {
 }
 
 function spawn_zombie(game, level, pos, special = null, dormant = true, fresh = false) {
-  const sid = special || pick_special(game.rng, game.profile, game_day(game), mutation_boost_at(game, level, pos));
+  const sid = special || pick_special(game.rng, game.profile, game_day(game), mutation_boost_at(game, level, pos) * saga_special_boost(game));
   const z = make_zombie(game, sid, pos[0], pos[1], fresh);
   mutation_apply(game, z, level, pos);                     // what its district has become
   z.state = dormant && level.kind !== 'overworld' ? 'dormant' : 'idle';

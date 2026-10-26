@@ -36,6 +36,7 @@ function start_event(game, ev, text = '', data = null) {
 function resolve_event(game, active, index) {
   if (active.event_id === 'story_personal') return comp_resolve_personal(game, active, index);
   if (active.event_id === 'mil_checkpoint') return military_resolve(game, active, index);
+  if (active.event_id === 'saga') return saga_resolve(game, active, index);
   const choice = EVENT_BY_ID[active.event_id].choices[index];
   if (!can_afford(game, choice)) return 'You cannot afford that.';
   const outcome = weighted_choice(game.rng, choice.outcomes.map((o) => [o, o.weight]));
@@ -58,7 +59,7 @@ function apply_fx(game, fx) {
     if (learned.length) game.msg(`You pick up the meaning of: ${learned.join(', ')}.`, 'good');
   }
   if ('heat' in fx) game.add_heat(fx.heat, true);
-  if ('time' in fx) game.lost_turns += Math.trunc(fx.time);        // the road eats the clock: the deadline moves closer, nothing hunts you meanwhile
+  if ('time' in fx) { game.lost_turns += Math.trunc(fx.time); front_lose_time(game, Math.trunc(fx.time)); }       // the road eats the clock: the deadline (or the tide) moves closer, nothing hunts you meanwhile
   for (const [item_id, qty] of Object.entries(fx.items || {})) {
     if (qty > 0) game.give_item(make_item(item_id, qty)); else if (qty < 0) p.take(item_id, -qty);
   }
