@@ -108,7 +108,8 @@ function bt_unaware(b, target, m) {
   return (s.facing[0] * vx + s.facing[1] * vy) / d < -0.3;
 }
 const bt_side_of = (b, m) => { const s = bt_squad(b, m.squad); return s ? (s.side || 'you') : 'you'; };
-function bt_rival_name(b) { const f = CONTENT.eras[b.era].factions[b.cfg.rivals]; return f ? f[0] : 'The rivals'; }
+function bt_rival_name(b) { if (b.cfg.rival_name) return b.cfg.rival_name; const f = CONTENT.eras[b.era].factions[b.cfg.rivals]; return f ? f[0] : 'The rivals'; }
+const bt_refuge_name = (b) => b.cfg.refuge_name || (BT_ERAS[b.era] || BT_ERAS.modern).refuge;
 
 function bt_type_stats(era_id, type) {
   const e = BT_ERAS[era_id] || BT_ERAS.modern;
@@ -366,7 +367,7 @@ function bt_pick_bases(b) {
   }
   const by = b.buildings.slice().sort((p, q) => (q[2] - q[0]) * (q[3] - q[1]) - (p[2] - p[0]) * (p[3] - p[1]) || p[1] - q[1] || p[0] - q[0]).slice(0, 4);
   by.sort((p, q) => p[1] - q[1] || p[0] - q[0]);
-  const names = BT_BASE_NAMES[b.era] || BT_BASE_NAMES.modern;
+  const names = b.cfg.places && b.cfg.places.length >= 4 ? b.cfg.places : BT_BASE_NAMES[b.era] || BT_BASE_NAMES.modern;
   b.bases = by.map((q, i) => ({ x0: q[0] + 1, y0: q[1] + 1, x1: q[2] - 1, y1: q[3] - 1, name: names[i], letter: 'ABCD'[i], owner: null, prog: 0, by: null }));
 }
 function bt_base_at(b, x, y) { return b.bases.find((q) => x >= q.x0 && x <= q.x1 && y >= q.y0 && y <= q.y1) || null; }
@@ -403,21 +404,28 @@ function bt_new(cfg) {
   if (!CONTENT.presets[cfg.zombies]) throw new Error('unknown zombies ' + cfg.zombies);
   if (!BT_OBJECTIVES[cfg.objective]) throw new Error('unknown objective ' + cfg.objective);
   if (!CONTENT.difficulties[cfg.difficulty]) throw new Error('unknown difficulty ' + cfg.difficulty);
-  if (cfg.objective === 'take' && !BT_RIVALS[cfg.rivals || 'raiders']) throw new Error('unknown rivals ' + cfg.rivals);
+  if (cfg.objective === 'take' && cfg.rivals !== 'none' && !BT_RIVALS[cfg.rivals || 'raiders']) throw new Error('unknown rivals ' + cfg.rivals);
+  if (cfg.company) {                                                   // a campaign company: its squads, with the men they have left
+    if (!Array.isArray(cfg.company) || !cfg.company.length || cfg.company.length > BT_ARMY.max) throw new Error('a company has one to five squads');
+    for (const q of cfg.company) if (!BT_TYPES[q.type] || !(q.men >= 1)) throw new Error('bad squad in the company');
+    cfg.company = cfg.company.map((q) => Object.assign({}, q));
+    cfg.forces = cfg.company.map((q) => q.type);
+  }
   if (cfg.objective === 'take') cfg.rivals = cfg.rivals || 'raiders';
   if (cfg.forces) { const err = bt_forces_error(cfg.forces); if (err) throw new Error(err); cfg.forces = cfg.forces.slice(); }
   const seed = cfg.seed !== null && cfg.seed !== undefined ? cfg.seed >>> 0 : Math.floor(Math.random() * 1073741824);
   const obj = BT_OBJECTIVES[cfg.objective], prof = CONTENT.presets[cfg.zombies];
   const b = {
     v: 1, cfg: Object.assign({}, cfg, { seed }), seed, rng: (seed ^ 0xBA77E) >>> 0 || 1, era: cfg.era, preset: cfg.zombies, objective: cfg.objective,
-    w: BT.W, h: BT.H, turn: 1, turns: obj.turns, t: 0, phase: 'plan', uid: 1, swarm: !!prof.swarm,
+    w: BT.W, h: BT.H, turn: 1, turns: cfg.turns || obj.turns, t: 0, phase: 'plan', uid: 1, swarm: !!prof.swarm,
     squads: [], men: [], zeds: [], civs: [], corpses: [], noises: [], lures: [], barricades: {}, windows: {}, barricades_left: 4,
     pending: [], wave: null, kills: 0, lost: 0, turned: 0, saved: 0, civ_lost: 0, civ_total: 0, report: [], over: null, refuge: null, house: null, extract_y: null, bases: [], rival_lost: 0, hold_all: null,
   };
   bt_generate(b);
   for (const h of b.houses || []) b.barricades[bt_idx(b, h.door[0], h.door[1])] = 360;     // the survivors nailed their door shut, well: it holds until help can get there
   bt_deploy(b);
-  if (b.objective === 'take') b.reinf = { left: BT_REINFORCEMENTS[b.cfg.difficulty] || 2, sent: 0, coming: false };
+  if (b.objective === 'take' && b.cfg.rivals !== 'none') b.reinf = { left: b.cfg.reinforcements !== undefined ? b.cfg.reinforcements : (BT_REINFORCEMENTS[b.cfg.difficulty] || 2), sent: 0, coming: false };
+  if (b.cfg.defend) for (const q of b.bases) q.owner = 'you';           // a defence: the bases are yours to keep
   bt_seed_dead(b);
   bt_plan_wave(b);
   b.report = [bt_opening_line(b)];
@@ -426,8 +434,10 @@ function bt_new(cfg) {
 
 function bt_opening_line(b) {
   const prof = CONTENT.presets[b.preset], era = BT_ERAS[b.era] || BT_ERAS.modern;
-  const goal = b.objective === 'hold' ? `Keep the dead out of the building marked REFUGE (${era.refuge}, bottom of the map) for ${b.turns} turns.`
+  const goal = b.objective === 'hold' ? `Keep the dead out of the building marked REFUGE (${bt_refuge_name(b)}, bottom of the map) for ${b.turns} turns.`
     : b.objective === 'rescue' ? `${b.civ_total} ${era.survivors} are hiding in three houses marked SURVIVORS; bring at least ${Math.ceil(b.civ_total / 2)} out. A squad at a door brings its people out, loudly. Then lead them to the EXIT at the bottom.`
+    : b.cfg.defend ? `Your men hold the buildings marked A to D. ${bt_rival_name(b)} are coming from the north to take them: keep more of them than they do.`
+    : b.cfg.rivals === 'none' ? 'Clear the buildings marked A to D of the dead and hold them: keep men inside, with nothing else in there.'
     : `Take the buildings marked A to D: clear out the dead, then keep men inside with nobody else there. ${bt_rival_name(b)} come from the north for the same.`;
   return `${goal} ${prof.blurb}`;
 }
@@ -477,15 +487,23 @@ function bt_deploy(b) {
   } else {
     for (let i = 0; i < types.length; i++) spots.push([types.length > 1 ? 4 + i * (b.w - 8) / (types.length - 1) : b.w / 2, b.h - 3.5]);
   }
+  if (b.cfg.defend && b.bases.length) b.bases.forEach((q, i) => { if (i < spots.length) spots[i] = [(q.x0 + q.x1 + 1) / 2, (q.y0 + q.y1 + 1) / 2]; });
   const make = (type, i, side, spot, name, call) => bt_make_squad(b, type, side, spot, name, call, () => names[ni++ % names.length]);
   types.forEach((type, i) => {
-    const call = era.medieval ? null : BT_CALLSIGNS[i];
+    const q = b.cfg.company ? b.cfg.company[i] : null;
+    const call = q && q.call ? q.call : era.medieval ? null : BT_CALLSIGNS[i];
     const s = make(type, i, 'you', spots[i], null, call);
-    s.name = era.medieval ? `${s.leader}'s ${era.names[type]}` : `${call} · ${era.names[type]}`;
+    s.name = q && q.name ? q.name : era.medieval ? `${s.leader}'s ${era.names[type]}` : `${call} · ${era.names[type]}`;
+    if (q) {                                                           // the men this squad has left after its earlier fights
+      while (s.men.length > q.men) { const id = s.men.pop(); b.men.splice(b.men.findIndex((m) => m.id === id), 1); }
+      if (q.ammo !== undefined) s.ammo = Math.min(s.ammo_max, q.ammo);
+      s.cid = q.id;
+    }
   });
-  if (b.objective === 'take') {
+  if (b.objective === 'take' && b.cfg.rivals !== 'none') {
     const rv = BT_RIVALS[b.cfg.rivals], d = b.cfg.difficulty;
-    const rtypes = d === 'easy' ? rv.forces.slice(0, 3) : d === 'hard' ? rv.forces.concat(['line']) : rv.forces.slice();
+    let rtypes = d === 'easy' ? rv.forces.slice(0, 3) : d === 'hard' ? rv.forces.concat(['line']) : rv.forces.slice();
+    if (b.cfg.rival_squads) rtypes = Array.from({ length: b.cfg.rival_squads }, (_, i) => rv.forces[i % rv.forces.length]);   // a campaign sizes them by the territory behind them
     const fname = bt_rival_name(b), words = era.medieval ? BT_RIVAL_TYPES_OLD : BT_RIVAL_TYPES;
     rtypes.forEach((type, i) => make(type, i, 'rival', [rtypes.length > 1 ? 4 + i * (b.w - 8) / (rtypes.length - 1) : b.w / 2, 2.5], `${fname}: ${words[type]}`, fname));
   }
@@ -527,7 +545,7 @@ const bt_hour = (b) => BT_OBJECTIVES[b.objective].hour0 + ((b.turn - 1) + b.t / 
 function bt_dark(b) { const h = bt_hour(b) % 24; return h >= 19.5 || h < 6; }
 function bt_mult(b) {
   const prof = bt_profile(b), hs = prof.horde_size;
-  return Math.pow((hs[0] + hs[1]) / 2 / 12, 0.55) * prof.density * (BT_PRESET_SCALE[prof.id] || 1) * CONTENT.difficulties[b.cfg.difficulty].zombies;
+  return Math.pow((hs[0] + hs[1]) / 2 / 12, 0.55) * prof.density * (BT_PRESET_SCALE[prof.id] || 1) * CONTENT.difficulties[b.cfg.difficulty].zombies * (b.cfg.density || 1);
 }
 
 function bt_pick_special(b) {
@@ -553,7 +571,7 @@ function bt_spawn_zed(b, x, y, special) {
 // Some of the dead are already here when the battle starts.
 function bt_seed_dead(b) {
   const prof = bt_profile(b), n = Math.round((b.objective === 'rescue' ? 16 : b.objective === 'take' ? 12 : 10) * bt_mult(b));
-  for (const q of b.bases) for (let i = 0, k = Math.max(2, Math.round(3 * bt_mult(b))); i < k; i++)            // every base is infested
+  if (!b.cfg.defend) for (const q of b.bases) for (let i = 0, k = Math.max(2, Math.round(3 * bt_mult(b))); i < k; i++)            // every base is infested
     bt_spawn_zed(b, bt_int(b, q.x0, q.x1) + 0.5, bt_int(b, q.y0, q.y1) + 0.5, bt_pick_special(b));
   const day = !bt_dark(b);
   for (let i = 0; i < n; i++) {
@@ -564,6 +582,7 @@ function bt_seed_dead(b) {
       if (bt_cost(b, k, 'z') === Infinity || bt_reserved(b, x, y) && b.objective === 'hold') continue;
       if (prof.sun_burn && day && !bt_indoor(t)) continue;              // the sun-shy dead wait indoors
       if (bt_in_house(b, x, y, 1)) continue;
+      if (b.cfg.defend && bt_base_at(b, x, y)) continue;                // a defence starts with your bases clear
       spot = [x + 0.5, y + 0.5];
     }
     if (spot) bt_spawn_zed(b, spot[0], spot[1], bt_pick_special(b));
@@ -1380,13 +1399,18 @@ function bt_check_over(b, endOfTurn) {
   const lose = (title, text) => { b.over = { victory: false, title, text, summary: bt_summary(b) }; b.phase = 'over'; };
   const win = (title, text) => { b.over = { victory: true, title, text, summary: bt_summary(b) }; b.phase = 'over'; };
   if (!b.men.some((m) => bt_side_of(b, m) === 'you')) return lose('Wiped out', 'Nobody in the company is left standing. The dead have the field.');
-  if (b.refuge && b.refuge.integrity <= 0) return lose('Overrun', `The dead got into ${era.refuge} and stayed there. The people inside had nowhere to go.`);
+  if (b.refuge && b.refuge.integrity <= 0) return lose('Overrun', `The dead got into ${bt_refuge_name(b)} and stayed there. The people inside had nowhere to go.`);
   if (b.objective === 'rescue') {
     const need = Math.ceil(b.civ_total / 2);
     if (b.civ_lost > b.civ_total - need) return lose('Too many lost', `Not enough of the ${era.survivors} are left alive to call this a rescue.`);
     if (!b.civs.length && b.saved >= need) return win('Brought them out', `${b.saved} of ${b.civ_total} ${era.survivors} made it out.`);
     if (endOfTurn && b.turn >= b.turns) return b.saved >= need ? win('Brought them out', `${b.saved} of ${b.civ_total} ${era.survivors} made it out before the way closed.`)
       : lose('Out of time', `The way out closed with ${b.saved} of ${b.civ_total} ${era.survivors} safe.`);
+  } else if (b.objective === 'take' && b.cfg.rivals === 'none') {       // clearing a district of the dead
+    if (!endOfTurn) return;
+    const mine = b.bases.filter((q) => q.owner === 'you').length, n = b.bases.length;
+    if (mine === n) return win('Cleared', `Every building worth having is yours, and the dead are thinning out.`);
+    if (b.turn >= b.turns) return mine * 2 > n ? win('Mostly cleared', `You hold ${mine} of ${n}. The rest can wait.`) : lose('The dead keep it', `You hold ${mine} of ${n}. Not enough to call the district yours.`);
   } else if (b.objective === 'take') {
     if (!endOfTurn) return;
     const mine = b.bases.filter((q) => q.owner === 'you').length, theirs = b.bases.filter((q) => q.owner === 'rival').length, n = b.bases.length;
@@ -1401,7 +1425,7 @@ function bt_check_over(b, endOfTurn) {
     if (b.turn >= b.turns) return mine > theirs ? win('The bigger share', `You hold ${mine} of ${n}; ${bt_rival_name(b)} hold ${theirs}.`)
       : lose(mine === theirs ? 'A stalemate' : 'Outplayed', `You hold ${mine} of ${n}; ${bt_rival_name(b)} hold ${theirs}.${mine === theirs ? ' Nobody can call the town theirs, and you needed to.' : ''}`);
   } else if (endOfTurn && b.turn >= b.turns) {
-    return win('The night held', `${cap(era.refuge)} stood until morning, ${Math.round(b.refuge.integrity)}% intact.`);
+    return win('The night held', `${cap(bt_refuge_name(b))} stood until morning, ${Math.round(b.refuge.integrity)}% intact.`);
   }
 }
 
@@ -1411,7 +1435,7 @@ function bt_summary(b) {
     const st = bt_type_stats(b.era, s.type);
     lines.push(`${s.name}: ${s.men.length}/${st.men} standing, ${s.kills} kills${s.men.length ? '' : ' (lost)'}`);
   }
-  if (b.objective === 'take') {
+  if (b.objective === 'take' && b.cfg.rivals !== 'none') {
     const left = b.squads.filter((s) => !bt_mine(s)).reduce((a, s) => a + s.men.length, 0);
     lines.push(`${bt_rival_name(b)}: ${b.rival_lost} dead, ${left} left${b.reinf && b.reinf.sent ? `, after ${b.reinf.sent} column${b.reinf.sent > 1 ? 's' : ''} of reinforcements` : ''}.`);
     lines.push('Bases: ' + b.bases.map((q) => `${q.letter} ${q.name} (${q.owner === 'you' ? 'yours' : q.owner === 'rival' ? 'theirs' : 'nobody'})`).join(', ') + '.');

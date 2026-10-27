@@ -131,12 +131,14 @@ function start(battle) {
   cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
 }
 
-function leave() {
+function stop() {
   playing = false; cancelAnimationFrame(raf); raf = 0; b = null;
   if (ro) { ro.disconnect(); ro = null; }
   window.removeEventListener('resize', resize);
-  UI.showTitle();
 }
+function leave() { stop(); UI.showTitle(); }
+// A campaign battle hands its result back to the campaign map.
+function backToMap() { const done = b; stop(); window.OB_CAMPAIGN.battleOver(done); }
 
 function resize() {
   if (!cv || !b) return;
@@ -274,7 +276,8 @@ function showResult() {
     el('div', 'sum', b.over.summary.map((l) => el('div', null, l))));
   const m = el('div', 'menu');
   const cfg = Object.assign({}, b.cfg);
-  m.append(btn('btn main', 'Same battle again', () => start(bt_new(cfg))), btn('btn', 'New battle', setup), btn('btn', 'Title screen', leave));
+  if (b.cfg.campaign) m.append(btn('btn main', 'Back to the map', backToMap));
+  else m.append(btn('btn main', 'Same battle again', () => start(bt_new(cfg))), btn('btn', 'New battle', setup), btn('btn', 'Title screen', leave));
   box.append(m); o.append(box); s.append(o);
 }
 
@@ -299,7 +302,9 @@ function openMenu() {
   ]));
   const m = el('div', 'menu');
   m.append(btn('btn main', 'Back to the battle', close), btn('btn', 'Save and quit', () => { if (b.phase === 'plan') bt_save(b); leave(); }),
-    btn('btn danger', 'Abandon the battle', () => { bt_delete_save(); leave(); }));
+    b.cfg.campaign ? btn('btn danger', 'Retreat', () => {             // in a campaign, a retreat is a lost battle: the dead stay dead
+      bt_delete_save(); b.over = { victory: false, title: 'Retreat', text: 'You pull out.', summary: bt_summary(b) }; backToMap();
+    }) : btn('btn danger', 'Abandon the battle', () => { bt_delete_save(); leave(); }));
   box.append(m); o.append(box); s.append(o);
 }
 
