@@ -101,6 +101,33 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
 * **What you see while planning**: the next wave and where it comes in (red marks on the edge), and a red arrow on every
   zombie you can see, pointing where it is going.
 
+## Campaign: Zona Norte (web only)
+
+**Campaign: Zona Norte** on the title screen: the northern suburbs of Buenos Aires in 2026, fought with the Battle mode.
+Engine: `src/campaign.js` (pure and deterministic like a battle, saved under `outbreak.campaign.v1`); front-end:
+`src/campaign_ui.js`; tests: `test/campaign.test.js`.
+
+* **The map**: fourteen districts linked as their real neighbours are (Olivos, Florida, Villa Martelli, Munro, Martínez,
+  San Isidro, Boulogne, San Fernando, Tigre, General Pacheco, Campo de Mayo, Nordelta, Escobar, Pilar), the river and the
+  Delta to the east. You start in Florida with four squads named for barrios of Vicente López. The Reapers hold Boulogne and
+  General Pacheco on the Panamericana, the Joint Task Force Campo de Mayo and Pilar, the Reborn the cathedral in San Isidro;
+  the Unicenter folk in Martínez trade, and join you once their goodwill reaches four.
+* **A day**: one operation on a district next to yours, fought as a battle with the district's own places as its buildings:
+  *clear* it of the dead (Take the town with no rivals), *assault* a faction (their company and their reinforcements grow with
+  the districts they hold), *rescue* survivors who signalled, *defend* a district under threat (a night Hold against a horde,
+  or a defence starting inside your buildings against a faction), or *rest*. Abandoning a threatened district, trading with
+  the Unicenter folk and refitting do not take the day.
+* **The company persists**: the men a squad loses stay lost. Recruits fill the gaps; a new squad costs a recruit a man and
+  supplies; machine-gun teams need the armoury at Campo de Mayo. Pacheco (the Ford plant) is a depot, San Fernando's hospital
+  gives recruits.
+* **The night**: districts pay, the dead spread from the worst districts (and can overrun a faction's), the factions take
+  empty districts or mass against yours; a threat nobody answers is a district lost. Then an encounter asks you to decide:
+  refugees off the Mitre tracks, a Task Force truce for one of your districts, the Reapers' toll on the Panamericana, the
+  Reborn's preachers, medicine for the Unicenter, a horde coming down Libertador that you can meet, block or lead into a
+  rival's district, a signal from a rooftop, deserters, a police armoury. Each choice moves something on the map.
+* **The end**: eight districts, or no district left to the Reapers, the Task Force and the Reborn, wins. Losing Florida, or
+  the whole company with fewer than four recruits to raise another, loses.
+
 ## Touch controls
 
 * **Pad** (bottom left): hold to keep moving. The centre dot waits; hold it to rest.

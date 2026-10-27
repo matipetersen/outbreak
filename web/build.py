@@ -19,8 +19,8 @@ from outbreak.config import DIFFICULTIES  # noqa: E402
 from outbreak.engine.clock import START_HOUR, TURNS_PER_DAY, TURNS_PER_HOUR  # noqa: E402
 
 JS_ORDER = ["util", "crafting", "audio", "model", "player", "worldgen", "chunks", "loot", "interiors", "cipher", "pathing", "spawn", "combat", "ai", "lives", "base", "ambience", "mutation", "raiders", "military", "wild", "companion", "contagion", "objective", "director", "pets", "mounts", "memory",
-            "hordes", "encounters", "dialogue", "services", "front", "factions", "saga", "ending", "records", "battle", "inventory_ops", "setup", "game", "save"]
-UI_ORDER = ["ui", "battle_ui"]
+            "hordes", "encounters", "dialogue", "services", "front", "factions", "saga", "ending", "records", "battle", "campaign", "inventory_ops", "setup", "game", "save"]
+UI_ORDER = ["ui", "battle_ui", "campaign_ui"]
 
 
 def plain(obj):
