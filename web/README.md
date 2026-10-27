@@ -59,10 +59,11 @@ cannot change (x1, x2, x4 or skip). Engine: `src/battle.js` (pure, deterministic
 is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `src/battle_ui.js`. Tests: `test/battle.test.js`.
 
 * **Objectives**: *Hold the refuge* (ten turns from dusk into the dark; the dead inside wear it down; squads inside at the
-  end of a turn restock ammunition) and *Bring them out* (survivors barricaded in a house to the north come out to the
-  first squad at their door and follow it, tethered to it on the map; bring at least half into the EXIT strip at the bottom in
-  ten turns. Near the strip they run the last stretch themselves, and an escort inside the strip brings out everyone close
-  to it. Their nailed door holds long enough for a squad to get there) and *Take the town*
+  end of a turn restock ammunition) and *Bring them out* (seven survivors hide in three houses across the north, two or three in each, so no single trip saves
+  enough: bring at least four to the EXIT, one six-tile stretch of the south edge, in ten turns. A squad at a door brings that
+  house out, and the noise of the barricade coming down draws the dead nearby and sends more down from the north after them.
+  Survivors are slow and their escort waits for them; near the EXIT they run the last stretch, and an escort inside it brings
+  out everyone close. Each is tethered to its escort on the map; each house shows how many are still inside) and *Take the town*
   (twelve turns: four buildings marked A to D, each infested; a base is yours after four seconds with your men inside and
   nobody else, living or dead; bases you hold restock ammunition. A rival faction of the era comes from the north for the
   same bases and shoots at you and at the dead: raiders, the military (with a machine gun) or a cult that does not break;

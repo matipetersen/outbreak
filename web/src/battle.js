@@ -65,7 +65,7 @@ const BT_OBJECTIVES = {
   take: { name: 'Take the town', turns: 12, hour0: 11, minutes: 20, forces: ['line', 'shield', 'line', 'scout'],
           blurb: 'Four buildings are worth holding, and the dead are in all of them. Clear one and keep your men inside it for a few seconds with nobody else there: it is yours, and it restocks your ammunition. A rival faction wants the same buildings and shoots at anyone. Hold them all, or more than the rivals after twelve turns.' },
   rescue: { name: 'Bring them out', turns: 10, hour0: 4.5, minutes: 15, forces: ['line', 'shield', 'scout', 'line'],
-            blurb: 'Survivors are trapped in a house to the north. Reach them, and they follow the squad that found them. Bring at least half of them to the south edge before ten turns are up.' },
+            blurb: 'Survivors are hiding in three houses across the north, two or three in each: no single trip saves enough of them. A squad at a door brings them out, and the noise brings the dead after you. They are slow, and the squad waits for them. Bring at least half to the EXIT, one stretch of the south edge, before ten turns are up.' },
 };
 
 // The rival company in "Take the town": one of the era's factions, a different mix for each; difficulty adds or removes a squad.
@@ -277,14 +277,26 @@ function bt_generate(b) {
   } else if (b.objective === 'take') {
     b.keep.push([0, 0, W - 1, 3], [0, H - 5, W - 1, H - 1]);              // the two companies come in from the ends
   } else {
+    // the way out is one stretch of the south edge, not all of it
+    const ex = bt_int(b, 1, W - 7);
+    b.exit = { x0: ex, x1: ex + 5, y0: H - 2, y1: H - 1 };
     b.extract_y = H - 2;
     b.keep.push([0, H - 6, W - 1, H - 1]);
-    const hx = bt_int(b, 3, W - 9), hy = bt_int(b, 3, 6), x1 = hx + 5, y1 = hy + 4;
-    const door = bt_int(b, hx + 1, x1 - 1);
-    bt_building(b, hx, hy, x1, y1, [[door, y1]]);
-    b.house = { x0: hx + 1, y0: hy + 1, x1: x1 - 1, y1: y1 - 1, door: [door, y1] };
-    b.buildings.push([hx, hy, x1, y1]);
-    b.keep.push([hx - 1, hy - 1, x1 + 1, y1 + 2]);
+    // three houses across the north, one in each third where the roads allow: no single trip brings out enough of them
+    b.houses = [];
+    for (let slot = 0; slot < 3; slot++) {
+      for (let tries = 0; tries < 300; tries++) {
+        const wide = tries > 30, hx = wide ? bt_int(b, 0, W - 4) : bt_int(b, slot * 8, slot * 8 + 4), hy = bt_int(b, 1, tries > 200 ? H - 13 : wide ? 11 : 9), x1 = hx + 3, y1 = hy + 3;   // last resort: the middle of the map
+        if (x1 >= W || !bt_free(b, hx, hy, x1, y1) || b.keep.some(([a0, b0, a1, b1]) => hx <= a1 && x1 >= a0 && hy <= b1 && y1 >= b0)) continue;
+        const door = bt_int(b, hx + 1, x1 - 1);
+        bt_building(b, hx, hy, x1, y1, [[door, y1]]);
+        b.houses.push({ x0: hx + 1, y0: hy + 1, x1: x1 - 1, y1: y1 - 1, door: [door, y1], open: false });
+        b.buildings.push([hx, hy, x1, y1]);
+        b.keep.push([hx - 1, hy - 1, x1 + 1, y1 + 2]);
+        break;
+      }
+    }
+    b.house = b.houses[0] || null;
   }
   // other buildings: each with one or two doors
   for (let tries = 0; tries < 140 && b.buildings.length < 7; tries++) {
@@ -327,7 +339,7 @@ function bt_generate(b) {
     const px = bt_int(b, 1, W - 4), py = bt_int(b, 3, H - 12);
     for (let y = py; y < py + 2; y++) for (let x = px; x < px + 3; x++) if (b.tiles[bt_idx(b, x, y)] === BTILE.GRASS && !bt_reserved(b, x, y)) b.tiles[bt_idx(b, x, y)] = BTILE.WATER;
   }
-  for (const q of b.buildings) if (!b.house || q[0] + 1 !== b.house.x0 || q[1] + 1 !== b.house.y0) bt_windows(b, q[0], q[1], q[2], q[3]);
+  for (const q of b.buildings) if (!(b.houses || []).some((h) => q[0] + 1 === h.x0 && q[1] + 1 === h.y0)) bt_windows(b, q[0], q[1], q[2], q[3]);
   // nothing planted in front of a door or a window
   for (let k = 0; k < b.tiles.length; k++) {
     if (b.tiles[k] !== BTILE.DOOR && b.tiles[k] !== BTILE.WINDOW) continue;
@@ -403,7 +415,7 @@ function bt_new(cfg) {
     pending: [], wave: null, kills: 0, lost: 0, turned: 0, saved: 0, civ_lost: 0, civ_total: 0, report: [], over: null, refuge: null, house: null, extract_y: null, bases: [], rival_lost: 0, hold_all: null,
   };
   bt_generate(b);
-  if (b.house) b.barricades[bt_idx(b, b.house.door[0], b.house.door[1])] = 360;     // the survivors nailed their door shut, well: it holds until help can get there
+  for (const h of b.houses || []) b.barricades[bt_idx(b, h.door[0], h.door[1])] = 360;     // the survivors nailed their door shut, well: it holds until help can get there
   bt_deploy(b);
   bt_seed_dead(b);
   bt_plan_wave(b);
@@ -414,7 +426,7 @@ function bt_new(cfg) {
 function bt_opening_line(b) {
   const prof = CONTENT.presets[b.preset], era = BT_ERAS[b.era] || BT_ERAS.modern;
   const goal = b.objective === 'hold' ? `Keep the dead out of the building marked REFUGE (${era.refuge}, bottom of the map) for ${b.turns} turns.`
-    : b.objective === 'rescue' ? `The ${era.survivors} are in the house marked SURVIVORS. Reach its door, then bring them to the green strip at the bottom.`
+    : b.objective === 'rescue' ? `${b.civ_total} ${era.survivors} are hiding in three houses marked SURVIVORS; bring at least ${Math.ceil(b.civ_total / 2)} out. A squad at a door brings its people out, loudly. Then lead them to the EXIT at the bottom.`
     : `Take the buildings marked A to D: clear out the dead, then keep men inside with nobody else there. ${bt_rival_name(b)} come from the north for the same.`;
   return `${goal} ${prof.blurb}`;
 }
@@ -457,12 +469,15 @@ function bt_deploy(b) {
     rtypes.forEach((type, i) => make(type, i, 'rival', [rtypes.length > 1 ? 4 + i * (b.w - 8) / (rtypes.length - 1) : b.w / 2, 2.5], `${fname}: ${words[type]}`, fname));
   }
   if (b.objective === 'rescue') {
-    const hs = b.house, n = 6;
-    for (let i = 0; i < n; i++) {
-      const x = hs.x0 + 0.5 + (i % 3) * ((hs.x1 - hs.x0) / 2), y = hs.y0 + 0.5 + Math.floor(i / 3) * ((hs.y1 - hs.y0));
-      b.civs.push({ id: b.uid++, kind: 'civ', x, y, hp: 12, max_hp: 12, follow: null, bitten: -1, spores: 0 });
-    }
-    b.civ_total = n;
+    const counts = [3, 2, 2];
+    for (let i = counts.length - 1; i > 0; i--) { const j = Math.floor(bt_rand(b) * (i + 1)); [counts[i], counts[j]] = [counts[j], counts[i]]; }
+    b.houses.forEach((hs, h) => {
+      for (let i = 0; i < counts[h]; i++) {
+        const x = hs.x0 + 0.5 + (i % 3) * ((hs.x1 - hs.x0) / 2), y = hs.y0 + 0.5 + Math.floor(i / 3) * (hs.y1 - hs.y0);
+        b.civs.push({ id: b.uid++, kind: 'civ', x, y, hp: 12, max_hp: 12, follow: null, bitten: -1, spores: 0, house: h });
+      }
+    });
+    b.civ_total = b.civs.length;
   }
 }
 
@@ -856,7 +871,8 @@ function bt_squads_step(b, fx) {
       target = nx ? [nx[0] + 0.5, nx[1] + 0.5] : null; pace = 'run';
     } else if (s.path.length) target = s.path[0];
     const before = [s.anchor[0], s.anchor[1]];
-    if (target && spread < 1.6) {
+    const lag = b.civs.some((c) => c.follow === s.id && Math.hypot(c.x - s.anchor[0], c.y - s.anchor[1]) > 2.6);   // nobody leaves the survivors behind
+    if (target && spread < 1.6 && !lag) {
       const speed = bt_pace_speed(pace) * st.speed * bt_speed_factor(b, s.anchor[0], s.anchor[1], 'h');
       const dx = target[0] - s.anchor[0], dy = target[1] - s.anchor[1], d = Math.hypot(dx, dy);
       if (d > 0.05) s.facing = [dx / d, dy / d];
@@ -1031,14 +1047,22 @@ function bt_civs_step(b, fx) {
       if (!s || !bt_alive(b, s) || s.state === 'broken') c.follow = null;
     }
     if (c.follow === null) {
-      const hs = b.house, door = [hs.door[0] + 0.5, hs.door[1] + 0.5];
+      const hs = b.houses[c.house || 0], door = [hs.door[0] + 0.5, hs.door[1] + 0.5];
       const hiding = bt_in_house(b, Math.floor(c.x), Math.floor(c.y), 0);
       for (const s of b.squads) {
         if (!bt_alive(b, s) || s.state === 'broken' || !bt_mine(s)) continue;
         if (dist(s.anchor, [c.x, c.y]) <= 2.5 || (hiding && dist(s.anchor, door) <= 2.5)) {
           c.follow = s.id;
           const dk = bt_idx(b, hs.door[0], hs.door[1]);
-          if (bt_has_barricade(b, dk)) { delete b.barricades[dk]; bt_invalidate(b); b.report.push(`The ${(BT_ERAS[b.era] || BT_ERAS.modern).survivors} pull their barricade down and follow ${s.name}. Lead them to the EXIT strip at the bottom.`); }
+          if (bt_has_barricade(b, dk)) {
+            delete b.barricades[dk]; bt_invalidate(b); hs.open = true;
+            b.report.push(`The ${(BT_ERAS[b.era] || BT_ERAS.modern).survivors} tear their barricade down and follow ${s.name}. Lead them to the EXIT at the bottom.`);
+            // all that hammering carries: the dead nearby hear it, and more come down from the north after them
+            bt_noise(b, door[0], door[1], 16, fx);
+            const n = Math.round((3 + b.turn) * bt_mult(b));
+            for (let i = 0; i < n; i++) b.pending.push({ at: b.t + 10 + Math.floor(bt_rand(b) * 30), side: 'north', near: hs.door[0], special: bt_pick_special(b) });
+            b.report.push('The noise carries. The dead are coming down from the north.');
+          }
           break;
         }
       }
@@ -1046,7 +1070,7 @@ function bt_civs_step(b, fx) {
     // close to the way out with an escort (or nothing in reach), they make the last stretch on their own, at a run
     const escort = c.follow !== null ? bt_squad(b, c.follow) : null;
     const clear = !b.zeds.some((z) => Math.hypot(z.x - c.x, z.y - c.y) < 3);
-    if (b.extract_y !== null && c.y >= b.extract_y - 6 && (escort || clear)) {
+    if (b.exit && bt_exit_dist(b, c.x, c.y) <= 6 && (escort || clear)) {
       const f = bt_hfield(b, 'exit', bt_exit_tiles(b)), nx = bt_descend(b, f, c.x, c.y, 'h');
       bt_move(b, c, nx ? nx[0] + 0.5 : c.x, nx ? nx[1] + 0.5 : b.h - 0.5, 1.8 * bt_speed_factor(b, c.x, c.y, 'h') * BT.DT, 'h');
     } else if (c.follow !== null) {
@@ -1054,15 +1078,15 @@ function bt_civs_step(b, fx) {
       const back = 1.1 + Math.floor(i / 3) * 0.55, across = ((i % 3) - 1) * 0.55;
       let tx = s.anchor[0] - s.facing[0] * back - s.facing[1] * across, ty = s.anchor[1] - s.facing[1] * back + s.facing[0] * across;
       if (!bt_passable(b, tx, ty, 'h')) { tx = s.anchor[0]; ty = s.anchor[1]; }
-      const speed = (s.pace === 'run' ? 1.8 : 1.35) * bt_speed_factor(b, c.x, c.y, 'h');
+      const speed = (s.pace === 'run' ? 1.5 : 1.1) * bt_speed_factor(b, c.x, c.y, 'h');      // tired, frightened people
       if (!bt_move(b, c, tx, ty, speed * BT.DT, 'h') && Math.hypot(tx - c.x, ty - c.y) > 0.8) {
         const f = bt_hfield(b, 'p' + bt_idx(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1])), [bt_idx(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1]))]);
         const nx = bt_descend(b, f, c.x, c.y, 'h');
         if (nx) bt_move(b, c, nx[0] + 0.5, nx[1] + 0.5, speed * BT.DT, 'h');
       }
     }
-    const out = escort && escort.anchor[1] >= b.extract_y && Math.hypot(escort.anchor[0] - c.x, escort.anchor[1] - c.y) <= 4;   // the escort is out, and they are with it
-    if (b.extract_y !== null && (c.y >= b.extract_y || out)) {
+    const out = escort && bt_exit_dist(b, escort.anchor[0], escort.anchor[1]) === 0 && Math.hypot(escort.anchor[0] - c.x, escort.anchor[1] - c.y) <= 4;   // the escort is out, and they are with it
+    if (b.exit && (bt_exit_dist(b, c.x, c.y) === 0 || out)) {
       b.civs.splice(b.civs.indexOf(c), 1); b.saved++;
       fx.push({ kind: 'saved', x: c.x, y: c.y });
       b.report.push(`A survivor reached safety (${b.saved}/${b.civ_total}).`);
@@ -1071,9 +1095,14 @@ function bt_civs_step(b, fx) {
 }
 
 function bt_exit_tiles(b) {
-  const out = [];
-  for (let y = b.extract_y; y < b.h; y++) for (let x = 0; x < b.w; x++) if (bt_cost(b, bt_idx(b, x, y), 'h') !== Infinity) out.push(bt_idx(b, x, y));
+  const out = [], e = b.exit;
+  for (let y = e.y0; y <= e.y1; y++) for (let x = e.x0; x <= e.x1; x++) if (bt_cost(b, bt_idx(b, x, y), 'h') !== Infinity) out.push(bt_idx(b, x, y));
   return out;
+}
+// How far (in tiles) a point is from the EXIT zone; 0 inside it.
+function bt_exit_dist(b, x, y) {
+  const e = b.exit, tx = Math.floor(x), ty = Math.floor(y);
+  return Math.max(Math.max(e.x0 - tx, 0, tx - e.x1), Math.max(e.y0 - ty, 0, ty - e.y1));
 }
 
 // What a zombie wants: someone it sees or smells, else the loudest thing it hears, else the place the living are.
@@ -1166,7 +1195,7 @@ function bt_zeds_step(b, grid, fx) {
         if (g === 'shelter') { key = 'shelter'; goals = null; }
         else if (g === 'refuge') { key = 'refuge'; goals = null; }
         else if (g === 'idle') continue;
-        else if (g === 'civs') { const c = b.civs[0]; const k = bt_idx(b, Math.floor(c.x), Math.floor(c.y)); key = 't' + k; goals = [k]; }
+        else if (g === 'civs') { let c = b.civs[0], cd = Infinity; for (const q of b.civs) { const d = Math.hypot(q.x - z.x, q.y - z.y); if (d < cd) { cd = d; c = q; } } const k = bt_idx(b, Math.floor(c.x), Math.floor(c.y)); key = 't' + k; goals = [k]; }
         else {
           let near = null, nd = Infinity;
           for (const u of living) { const d = Math.hypot(u.x - z.x, u.y - z.y); if (d < nd) { nd = d; near = u; } }
@@ -1229,7 +1258,7 @@ function bt_goal_set(b, key) {
   else if (key === 'shelter') { for (let k = 0; k < b.tiles.length; k++) if (bt_indoor(b.tiles[k]) && !(b.refuge && bt_in_refuge(b, k % b.w, Math.floor(k / b.w)))) out.push(k); }
   return out;
 }
-function bt_in_house(b, x, y, margin) { const h = b.house; return !!h && x >= h.x0 - margin && x <= h.x1 + margin && y >= h.y0 - margin && y <= h.y1 + margin; }
+function bt_in_house(b, x, y, margin) { return (b.houses || (b.house ? [b.house] : [])).some((h) => x >= h.x0 - margin && x <= h.x1 + margin && y >= h.y0 - margin && y <= h.y1 + margin); }
 function bt_in_refuge(b, x, y) { const r = b.refuge; return !!r && x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1; }
 
 function bt_infection_step(b, fx) {
@@ -1393,6 +1422,8 @@ function bt_load(store) {
   if (!raw) return null;
   const b = JSON.parse(raw);
   if (!b || b.v !== 1) return null;
+  if (b.house && !b.houses) b.houses = [b.house];                                   // saves from before the three houses
+  if (b.extract_y !== null && b.extract_y !== undefined && !b.exit) b.exit = { x0: 0, x1: b.w - 1, y0: b.extract_y, y1: b.h - 1 };
   return b;
 }
 function bt_has_save(store) { try { const b = bt_load(store); return !!(b && !b.over); } catch (e) { return false; } }

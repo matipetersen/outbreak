@@ -12,7 +12,8 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
     const north = []; for (let x = 0; x < b.w; x++) if (OB.bt_cost(b, x, 'z') !== Infinity) north.push(x);
     const f = OB.bt_dijkstra(b, north, 'z');
     if (b.refuge) assert(f[OB.bt_idx(b, b.refuge.x0, b.refuge.y0)] < Infinity, `${era}/${zombies}: the dead can reach the refuge`);
-    if (b.house) assert(f[OB.bt_idx(b, b.house.door[0], b.house.door[1])] < Infinity, 'the dead can reach the house');
+    for (const h of b.houses || []) assert(f[OB.bt_idx(b, h.door[0], h.door[1])] < Infinity, 'the dead can reach every house');
+    if (objective === 'rescue') assert.strictEqual(b.houses.length, 3, 'three houses');
     assert.strictEqual(b.squads.filter(OB.bt_mine).length, 4);
     for (const s of b.squads) for (const m of OB.bt_squad_men(b, s)) assert(OB.bt_passable(b, m.x, m.y, 'h'), 'nobody starts in a wall');
     assert(b.wave && b.wave.count > 0 && b.phase === 'plan');
@@ -37,7 +38,7 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   const beside = OB.bt_order_move(b, s.id, [wall]);
   assert(beside && OB.bt_passable(b, beside[beside.length - 1][0], beside[beside.length - 1][1], 'h'), 'a wall target means the open ground beside it');
   const rb = mk({ objective: 'rescue' });
-  assert.strictEqual(OB.bt_order_move(rb, rb.squads[0].id, [[rb.house.x0, rb.house.y0]]), null, 'not into a house barricaded from inside');
+  assert.strictEqual(OB.bt_order_move(rb, rb.squads[0].id, [[rb.houses[0].x0, rb.houses[0].y0]]), null, 'not into a house barricaded from inside');
   const path = OB.bt_order_move(b, s.id, [[s.anchor[0], s.anchor[1] - 6]]);
   assert(path && path.length && Math.floor(path[path.length - 1][1]) === Math.floor(s.anchor[1] - 6));
   assert(OB.bt_set_ability(b, s.id, 3, 3), 'riflemen have no special action');
@@ -139,21 +140,38 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   ticks(b, 100);
   assert(s.state === 'broken' || s.men.length === 0, `the squad broke (${s.state}, morale ${s.morale.toFixed(0)})`);
 }
-{ // rescue: survivors come out to a squad at their door, follow it, and count when they reach the south edge
-  const b = mk({ objective: 'rescue' });
+{ // rescue: the people of one house come out to a squad at its door (loudly) and follow it to the EXIT; one house is not enough
+  const b = mk({ objective: 'rescue', zombies: 'spore' });
   b.zeds.length = 0; b.wave.count = 0;
-  const s = b.squads[0], door = b.house.door;
+  assert.strictEqual(b.civ_total, 7); assert.strictEqual(b.houses.length, 3);
+  const s = b.squads[0], h = b.houses[0], door = h.door, mine = b.civs.filter((c) => c.house === 0);
   assert(b.barricades[OB.bt_idx(b, door[0], door[1])] > 0, 'they nailed their door shut');
   placeMen(b, s, door[0] + 0.5, door[1] + 1.5);
-  OB.bt_begin_turn(b); ticks(b, 5);
-  assert(b.civs.every((c) => c.follow === s.id), 'they all come out');
-  assert(!(OB.bt_idx(b, door[0], door[1]) in b.barricades), 'their barricade comes down');
+  OB.bt_begin_turn(b);
+  let loud = 0; for (let i = 0; i < 5; i++) loud += OB.bt_tick(b).filter((f) => f.kind === 'noise').length;
+  assert(mine.every((c) => c.follow === s.id), 'that house comes out');
+  assert(b.civs.filter((c) => c.house !== 0).every((c) => c.follow === null), 'the other houses do not');
+  assert(!(OB.bt_idx(b, door[0], door[1]) in b.barricades) && h.open, 'their barricade comes down');
+  assert(loud > 0 && b.pending.length > 0, 'the noise brings more of the dead');
+  b.pending.length = 0;
   ticks(b, 200);
   assert.strictEqual(b.phase, 'plan');
-  assert(OB.bt_order_move(b, s.id, [[door[0], b.h - 1]]), 'a route to the south edge');
-  for (let t = 0; t < 4 && !b.over; t++) OB.bt_run_turn(b);
-  assert(b.saved >= 3, `brought out ${b.saved}`);
-  assert(b.over && b.over.victory, b.over && b.over.title);
+  assert(OB.bt_order_move(b, s.id, [[b.exit.x0 + 2, b.exit.y0]]), 'a route to the EXIT');
+  for (let t = 0; t < 5 && !b.over; t++) { b.wave.count = 0; OB.bt_run_turn(b); b.zeds.length = 0; b.pending.length = 0; }
+  assert.strictEqual(b.saved, mine.length, `brought out ${b.saved}`);
+  assert(!b.over || !b.over.victory, 'and that alone does not win it');
+}
+{ // the escort waits for the survivors: running does not leave them behind
+  const b = mk({ objective: 'rescue', zombies: 'spore' });
+  b.zeds.length = 0; b.wave.count = 0;
+  const s = b.squads[0], door = b.houses[0].door;
+  placeMen(b, s, door[0] + 0.5, door[1] + 1.5);
+  OB.bt_begin_turn(b); ticks(b, 5); b.pending.length = 0;
+  ticks(b, 200);
+  OB.bt_set(b, s.id, { pace: 'run' });
+  OB.bt_order_move(b, s.id, [[b.exit.x0 + 2, b.exit.y0]]);
+  OB.bt_begin_turn(b); b.pending.length = 0;
+  for (let i = 0; i < 60; i++) { OB.bt_tick(b); for (const c of b.civs.filter((q) => q.follow === s.id)) assert(Math.hypot(c.x - s.anchor[0], c.y - s.anchor[1]) < 4.5, 'nobody is left far behind'); }
 }
 { // whole battles run to an end without errors, with no orders at all
   const runs = Object.keys(OB.CONTENT.presets).map((z) => ({ zombies: z })).concat(Object.keys(OB.CONTENT.eras).map((e) => ({ era: e })));
@@ -388,13 +406,13 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
 { // exfil: an escort stopping at the very top of the EXIT strip still gets everyone with it out
   const b = mk({ objective: 'rescue', zombies: 'classic', seed: 3 });
   b.zeds.length = 0;
-  const s = b.squads[0], door = b.house.door;
+  const s = b.squads[0], door = b.houses[0].door, mine = b.civs.filter((c) => c.house === 0).length;
   OB.bt_order_move(b, s.id, [[door[0], door[1] + 1]]);
   for (let t = 0; t < 8 && !b.over; t++) {
-    if (b.civs.length && b.civs.every((q) => q.follow === s.id)) OB.bt_order_move(b, s.id, [[Math.floor(s.anchor[0]), b.extract_y]]);
-    b.wave.count = 0; OB.bt_run_turn(b); b.zeds.length = 0;
+    if (b.civs.some((q) => q.follow === s.id)) OB.bt_order_move(b, s.id, [[b.exit.x0 + 2, b.exit.y0]]);
+    b.wave.count = 0; OB.bt_run_turn(b); b.zeds.length = 0; b.pending.length = 0;
+    if (b.saved === mine) break;
   }
-  assert.strictEqual(b.saved, b.civ_total, `all of them out (${b.saved}/${b.civ_total})`);
-  assert(b.over && b.over.victory);
+  assert.strictEqual(b.saved, mine, `all of that house out (${b.saved}/${mine})`);
 }
 console.log('battle tests passed');
