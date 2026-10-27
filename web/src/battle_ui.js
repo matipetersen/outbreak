@@ -198,8 +198,8 @@ function renderPanel() {
     p.append(row2);
     p.append(el('div', 'bt-hint', mode === 'face' ? 'Tap the side they should watch. Fire from behind them hurts most; when they are on the move, they turn when they arrive.' : mode === 'ability' ? (kind === 'lure' ? 'Tap where the lure should go (within 10 tiles). The dead go to the noise for two turns.' : 'Tap a tile within 3 tiles of where the squad stops. They need 4 quiet seconds there to build it.')
       : s.state === 'broken' ? 'Broken: they run for safety and ignore orders until they rally. Anyone following them is left behind.'
-      : b.civs.some((q) => q.follow === s.id) ? `${b.civs.filter((q) => q.follow === s.id).length} survivors follow this squad. Lead them into the green EXIT strip at the bottom; near it they run the last stretch themselves.`
-      : b.objective === 'rescue' && b.civs.some((q) => q.follow === null) ? `${cap(era.weapons[s.type])}. Send a squad to the door of the house marked SURVIVORS: they come out and follow it.`
+      : b.civs.some((q) => q.follow === s.id) ? `${b.civs.filter((q) => q.follow === s.id).length} survivors follow this squad. Lead them into the green EXIT at the bottom; near it they run the last stretch themselves. They are slow: the squad waits for them.`
+      : b.objective === 'rescue' && b.civs.some((q) => q.follow === null) ? `${cap(era.weapons[s.type])}. Send a squad to the door of a house marked SURVIVORS: they come out and follow it, and the noise draws the dead.`
       : `${cap(era.weapons[s.type])}${bt_type_stats(b.era, s.type).range ? '' : ', close combat only'}. ${s.type === 'scout' ? ' Left still in brush or a building, they snipe unseen.' : ''} Tap the map to move them, or drag a route from the squad.`));
   }
   if (report.length) p.append(el('div', 'bt-feed', report.slice(-4).map((l) => el('div', null, l))));
@@ -421,11 +421,15 @@ function draw(now, alpha) {
   if (bt_dark(b)) { c.fillStyle = 'rgba(10,14,40,.22)'; c.fillRect(P(0), Q(0), b.w * ts, b.h * ts); }
   // places that matter, over the fog so they are never lost: what to defend, whom to fetch, what to take
   if (b.refuge) place(b.refuge, `REFUGE ${Math.round(b.refuge.integrity)}%`, '#55b3c4', b.refuge.integrity < 50 && Math.sin(now / 160) > 0);
-  if (b.house && b.civs.some((q) => q.follow === null)) place(b.house, 'SURVIVORS', '#55b3c4', false);
-  if (b.extract_y !== null) {                                          // the way out, drawn over the fog: where the survivors must end up
-    c.fillStyle = 'rgba(88,184,120,.26)'; c.fillRect(P(0), Q(b.extract_y), b.w * ts, (b.h - b.extract_y) * ts);
-    c.strokeStyle = '#58b878'; c.lineWidth = 2; c.setLineDash([6, 4]); c.beginPath(); c.moveTo(P(0), Q(b.extract_y)); c.lineTo(P(b.w), Q(b.extract_y)); c.stroke(); c.setLineDash([]);
-    label('EXIT', P(b.w / 2), Q(b.extract_y + 1), '#58b878');
+  (b.houses || []).forEach((h, i) => {
+    const inside = b.civs.filter((q) => q.follow === null && (q.house || 0) === i && bt_in_house(b, Math.floor(q.x), Math.floor(q.y), 0)).length;
+    if (inside) place(h, `SURVIVORS ${inside}`, '#55b3c4', false);
+  });
+  if (b.exit) {                                                         // the way out, drawn over the fog: where the survivors must end up
+    const e = b.exit, x = P(e.x0), y = Q(e.y0), w = (e.x1 - e.x0 + 1) * ts, h = (e.y1 - e.y0 + 1) * ts;
+    c.fillStyle = 'rgba(88,184,120,.32)'; c.fillRect(x, y, w, h);
+    c.strokeStyle = '#58b878'; c.lineWidth = 2; c.setLineDash([6, 4]); c.strokeRect(x + 1, y + 1, w - 2, h - 2); c.setLineDash([]);
+    label('EXIT', x + w / 2, y - 1, '#58b878');
   }
   for (const q of b.bases) {
     const col = q.owner === 'you' ? '#55b3c4' : q.owner === 'rival' ? '#e2573f' : '#c9c2ae';
