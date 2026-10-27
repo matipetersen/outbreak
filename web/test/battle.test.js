@@ -221,11 +221,11 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   }
   const b = mk({ objective: 'take', rivals: 'military' });
   const rivals = b.squads.filter((s) => !OB.bt_mine(s)), mine = b.squads.filter(OB.bt_mine);
-  assert.strictEqual(rivals.length, 3, 'three rival squads on normal'); assert.strictEqual(mine.length, 4);
+  assert.strictEqual(rivals.length, 4, 'four rival squads on normal'); assert.strictEqual(mine.length, 4);
   assert(rivals[0].name.startsWith('Joint Task Force'), rivals[0].name);
   assert(rivals.every((s) => s.anchor[1] < 5) && mine.every((s) => s.anchor[1] > b.h - 6), 'they start at opposite ends');
   for (const q of b.bases) assert(b.zeds.some((z) => OB.bt_base_at(b, Math.floor(z.x), Math.floor(z.y)) === q), `${q.name} is infested`);
-  assert.strictEqual(mk({ objective: 'take', difficulty: 'hard' }).squads.filter((s) => !OB.bt_mine(s)).length, 4);
+  assert.strictEqual(mk({ objective: 'take', difficulty: 'hard' }).squads.filter((s) => !OB.bt_mine(s)).length, 5);
   assert.throws(() => mk({ objective: 'take', rivals: 'aliens' }));
   // the rivals pick bases on their own
   OB.bt_begin_turn(b);
@@ -274,7 +274,7 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
 { // holding every base wins only once it has been held through a whole turn; the rivals can win the same way
   const b = mk({ objective: 'take' });
   for (const q of b.bases) q.owner = 'you';
-  b.zeds.length = 0; b.wave.count = 0;
+  b.zeds.length = 0; b.wave.count = 0; b.reinf.left = 0;                       // nobody left to send
   for (const s of b.squads.filter((x) => !OB.bt_mine(x))) { for (const m of OB.bt_squad_men(b, s)) b.men.splice(b.men.indexOf(m), 1); s.men = []; }
   OB.bt_run_turn(b);
   assert(!b.over && b.hold_all === 'you', 'one turn is not enough');
@@ -414,5 +414,38 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
     if (b.saved === mine) break;
   }
   assert.strictEqual(b.saved, mine, `all of that house out (${b.saved}/${mine})`);
+}
+{ // wipe out the rivals and a bigger column comes the next turn, announced; then the next; then nobody is left to send
+  const b = mk({ objective: 'take', zombies: 'spore' });
+  assert.deepStrictEqual(b.reinf, { left: 2, sent: 0, coming: false });
+  assert.strictEqual(mk({ objective: 'take', difficulty: 'hard' }).reinf.left, 3);
+  const wipe = () => { for (const s of b.squads.filter((x) => !OB.bt_mine(x))) { for (const m of OB.bt_squad_men(b, s)) b.men.splice(b.men.indexOf(m), 1); s.men = []; } };
+  const rivals = () => b.squads.filter((x) => !OB.bt_mine(x) && x.men.length);
+  const first = rivals().length;
+  wipe(); b.zeds.length = 0; b.wave.count = 0;
+  OB.bt_run_turn(b);
+  assert(b.reinf.coming && b.report.some((l) => /column/.test(l)), 'they are seen coming');
+  assert.strictEqual(rivals().length, 0, 'not there yet: you get one turn');
+  OB.bt_begin_turn(b);
+  assert.strictEqual(rivals().length, first + 1, 'one squad bigger than the company you beat');
+  assert(rivals().every((s) => s.anchor[1] < 3 && s.path.length), 'from the north, already on the move');
+  while (b.phase === 'resolve' && !b.over) OB.bt_tick(b);
+  wipe(); b.zeds.length = 0; b.wave.count = 0;
+  if (!b.over) OB.bt_run_turn(b);
+  OB.bt_begin_turn(b);
+  assert.strictEqual(rivals().length, first + 2, 'and the next is bigger again');
+  while (b.phase === 'resolve' && !b.over) OB.bt_tick(b);
+  wipe(); b.zeds.length = 0; b.wave.count = 0;
+  if (!b.over) OB.bt_run_turn(b);
+  assert(!b.reinf.coming && b.reinf.sent === 2, 'on normal, two columns and no more');
+}
+{ // holding every base does not end it early while the rivals still have columns to send
+  const b = mk({ objective: 'take', zombies: 'spore' });
+  for (const q of b.bases) q.owner = 'you';
+  b.zeds.length = 0; b.wave.count = 0;
+  for (const s of b.squads.filter((x) => !OB.bt_mine(x))) { for (const m of OB.bt_squad_men(b, s)) b.men.splice(b.men.indexOf(m), 1); s.men = []; }
+  OB.bt_run_turn(b); b.zeds.length = 0; b.wave.count = 0; OB.bt_run_turn(b);
+  assert(!b.over && b.reinf.sent === 1, 'no early win: a column came instead');
+  assert(b.report.some((l) => /reinforcements arrive/.test(l)), 'and its arrival is in the report');
 }
 console.log('battle tests passed');

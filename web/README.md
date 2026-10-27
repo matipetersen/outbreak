@@ -67,8 +67,10 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
   (twelve turns: four buildings marked A to D, each infested; a base is yours after four seconds with your men inside and
   nobody else, living or dead; bases you hold restock ammunition. A rival faction of the era comes from the north for the
   same bases and shoots at you and at the dead: raiders, the military (with a machine gun) or a cult that does not break;
-  three squads on normal, two on easy, four on hard. Holding every base through a whole turn wins early, for either side;
-  otherwise whoever holds more at the end). The map labels what matters: REFUGE, SURVIVORS, EXIT and the bases, coloured
+  four squads on normal, three on easy, five on hard. Wipe them out and a column of reinforcements, announced the turn
+  before with an amber band on the north edge, arrives one squad bigger each time: one column on easy, two on normal, three
+  on hard. Holding every base through a whole turn wins early, for you only once they have nobody left to send; otherwise
+  whoever holds more at the end). The map labels what matters: REFUGE, SURVIVORS, EXIT and the bases, coloured
   by owner.
 * **Your company** is bought on the setup screen from 13 points, one to five squads: riflemen (or the era's line) 3,
   shield squad 3, heavy weapon 4, scouts 2. Each objective offers a standard company to start from; the choice is kept for

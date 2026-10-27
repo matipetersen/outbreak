@@ -216,7 +216,8 @@ function renderStatus() {
   else if (b.bases.length) goal = `Bases ${b.bases.filter((q) => q.owner === 'you').length}–${b.bases.filter((q) => q.owner === 'rival').length}`;
   else { const f = b.civs.filter((q) => q.follow !== null).length; goal = `Out ${b.saved}/${b.civ_total}${f ? ` · ${f} follow` : ''}${b.civ_lost ? ` · ${b.civ_lost} lost` : ''}`; }
   let wave = '';
-  if (b.phase === 'plan' && b.wave) wave = b.wave.inside ? `Next: ${b.wave.words} waking in the buildings` : `Next: ${b.wave.words} from the ${b.wave.sides.join(' and ')}`;
+  if (b.phase === 'plan' && b.reinf && b.reinf.coming) wave = `A column of ${bt_rival_name(b)} arrives from the north`;
+  else if (b.phase === 'plan' && b.wave) wave = b.wave.inside ? `Next: ${b.wave.words} waking in the buildings` : `Next: ${b.wave.words} from the ${b.wave.sides.join(' and ')}`;
   st.innerHTML = '';
   st.append(el('div', 'bt-l1', [el('b', null, `Turn ${Math.min(b.turn, b.turns)}/${b.turns}`), ` · ${hh}:${mm} ${light} · `, el('b', null, goal)]), el('div', 'bt-l2', wave || (playing ? 'Orders locked.' : '')));
 }
@@ -291,6 +292,7 @@ function openMenu() {
     el('div', null, 'In the dark you see, and shoot, only five tiles away.'),
     el('div', null, 'Windows let sight and shots through but not people. Someone behind a window is hard to hit. The dead smash them in; a broken window can be climbed or barricaded.'),
     el('div', null, 'Sneak: half speed, and nobody notices the squad until it is close or opens fire. The dead that have not seen you are easier to drop with a head shot, and go down quietly in close combat. Rivals shot from behind (their chevron points where they look) lose heart fast.'),
+    el('div', null, 'Wipe out the rivals and they send a fresh column from the north the next turn, one squad bigger each time: one column on easy, two on normal, three on hard. The amber band on the north edge means it is on its way.'),
     el('div', null, 'Face: tap the side a squad should watch. The arrow at each squad shows it. The rivals see what their men see, and when they spot your men holding a base they send a squad round behind them, sneaking.'),
     el('div', null, 'Scouts that stay still for two seconds in brush or inside a building are set up as snipers: longer range, better aim, and nobody sees them until they are close.'),
     el('div', null, 'Take the town: a base (A to D) is yours after four seconds with your men inside and nobody else, living or dead. Blue outline: yours. Red: theirs. Bases you hold restock your ammunition. Hold all of them through a whole turn to win.'),
@@ -579,8 +581,9 @@ function drawOrders(s, col, on) {
 }
 
 function drawWave(now) {
-  const w = b.wave; if (!w || !w.entries) return;
   const c = ctx, { ts, ox, oy } = view, pulse = 0.45 + 0.35 * Math.sin(now / 260);
+  if (b.reinf && b.reinf.coming) { c.fillStyle = `rgba(226,170,50,${0.35 + pulse * 0.6})`; c.fillRect(ox, oy, b.w * ts, ts * .7); label('REINFORCEMENTS', ox + b.w * ts / 2, oy + ts * 1.8, '#e2aa32'); }     // the rival column, along the whole north edge
+  const w = b.wave; if (!w || !w.entries) return;
   c.fillStyle = `rgba(226,87,63,${pulse})`;
   for (const e of w.entries) {
     if (e.side === 'north') c.fillRect(ox + (e.at - 2.5) * ts, oy, ts * 6, ts * .35);
