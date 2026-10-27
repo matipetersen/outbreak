@@ -35,7 +35,7 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   const b = OB.bt_new(r.battle);
   const mine = b.squads.filter(OB.bt_mine);
   assert.strictEqual(mine.length, 4); assert.strictEqual(mine[0].men.length, 4, 'the men it has left'); assert.strictEqual(mine[0].name, cs.company[0].name);
-  assert(b.bases.some((q) => q.name === 'the Puerto de Olivos'), 'the places of Olivos');
+  assert(b.bases.some((q) => q.name === 'Puerto de Olivos'), 'the places of Olivos');
   assert(OB.cp_ops(cs).length === 0, 'nothing else while the battle is on');
   const day = cs.day, sup = cs.supplies;
   OB.cp_finish_battle(cs, fakeBattle(cs, true, 2));
@@ -83,7 +83,7 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   const h = mk({}); h.threat = { zone: 'florida', by: 'dead' };
   assert(!OB.cp_ops(h).some((o) => o.kind === 'abandon'), 'Florida cannot be abandoned');
   const r2 = OB.cp_choose(h, { kind: 'defend', zone: 'florida' });
-  assert(r2.battle.objective === 'hold' && r2.battle.refuge_name === 'the school gym');
+  assert(r2.battle.objective === 'hold' && r2.battle.refuge_name === 'Gimnasio de la escuela');
   OB.cp_finish_battle(h, fakeBattle(h, false));
   assert(h.over && !h.over.victory && /Florida/.test(h.over.title), 'lose Florida and it is over');
 }
@@ -110,7 +110,7 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   const cs = mk({});
   cs.zones.munro.owner = 'you'; cs.zones.boulogne.dead = 2; cs.supplies = 5;
   cs.event = { id: 'horde', data: { zone: 'munro', from: 'boulogne', lure: 'pacheco' } };
-  const v = OB.cp_event_view(cs), lure = v.choices.findIndex((c) => /Lead it into/.test(c.label));
+  const v = OB.cp_event_view(cs), lure = v.choices.findIndex((c) => /Llevarla a/.test(c.label));
   OB.cp_decide(cs, lure);
   assert(cs.zones.pacheco.dead >= 2 && cs.supplies === 3);
 }
@@ -139,5 +139,32 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   const cfgs = [OB.cp_battle_cfg(cs, { kind: 'clear', zone: 'olivos' }), OB.cp_battle_cfg(cs, { kind: 'assault', zone: 'boulogne', by: 'raiders' }),
     OB.cp_battle_cfg(cs, { kind: 'defend', zone: 'munro', by: 'dead' }), OB.cp_battle_cfg(cs, { kind: 'defend', zone: 'munro', by: 'cult' }), OB.cp_battle_cfg(cs, { kind: 'rescue', zone: 'olivos' })];
   for (const cfg of cfgs) { const b = OB.bt_new(cfg); for (let t = 0; t < 14 && !b.over; t++) OB.bt_run_turn(b); assert(b.over, cfg.op); }
+}
+{ // each district's battles are fought on its own drawn map: the river where it is, its four places as the buildings A to D
+  for (const [id, z] of Object.entries(OB.CP_ZONES)) {
+    const cs = mk({}); cs.zones[id].owner = null;
+    for (const n of z.adj) cs.zones[n].owner = 'you';
+    const cfg = OB.cp_battle_cfg(cs, { kind: 'clear', zone: id });
+    assert(cfg.layout, `${id} has a map`);
+    for (let seed = 1; seed <= 3; seed++) {
+      const b = OB.bt_new(Object.assign({}, cfg, { seed }));
+      assert.deepStrictEqual(b.bases.map((q) => q.name), z.places, `${id}: the places, in order`);
+      for (const q of b.bases) assert(q.x1 >= q.x0 && q.y1 >= q.y0, `${id}: a room inside ${q.name}`);
+      const north = []; for (let x = 0; x < b.w; x++) if (OB.bt_cost(b, x, 'z') !== Infinity) north.push(x);
+      const fz = OB.bt_dijkstra(b, north, 'z');
+      const south = OB.bt_idx(b, Math.floor(b.w / 2), b.h - 2), fh = OB.bt_dijkstra(b, [south], 'h');
+      for (const q of b.bases) {
+        assert(fz[OB.bt_idx(b, q.x0, q.y0)] < Infinity, `${id}: the dead can reach ${q.name}`);
+        assert(fh[OB.bt_idx(b, q.x0, q.y0)] < Infinity, `${id}: your men can walk into ${q.name}`);
+      }
+      for (const s of b.squads) for (const m of OB.bt_squad_men(b, s)) assert(OB.bt_passable(b, m.x, m.y, 'h'), `${id}: nobody starts in the river`);
+      if (z.layout.water) assert(b.tiles.includes(OB.BTILE.WATER), `${id}: the water is there`);
+    }
+    const ff = OB.bt_new(Object.assign({}, cfg, { objective: 'take', rivals: 'raiders', seed: 2 }));
+    for (let t = 0; t < 14 && !ff.over; t++) OB.bt_run_turn(ff);
+    assert(ff.over, `${id}: a fight there comes to an end`);
+  }
+  const cs = mk({}); const b = OB.bt_new(OB.cp_battle_cfg(cs, { kind: 'clear', zone: 'olivos' }));
+  assert.strictEqual(b.squads.find(OB.bt_mine).type_name, 'Fusileros', 'the squads keep their campaign names');
 }
 console.log('campaign tests passed');

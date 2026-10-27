@@ -166,7 +166,7 @@ function renderPanel() {
     const c = el('button', 'bt-card' + (s.id === sel ? ' on' : '') + (s.men.length ? '' : ' lost'));
     c.type = 'button'; c.style.borderColor = s.id === sel ? SQUAD_COL[i % SQUAD_COL.length] : '';
     const pips = '●'.repeat(s.men.length) + '○'.repeat(Math.max(0, st.men - s.men.length));
-    c.append(el('div', 'bt-cname', [el('span', 'bt-dot'), s.call || s.name]), el('div', 'bt-ctype', BT_ERAS[b.era].names[s.type]), el('div', 'bt-pips', pips),
+    c.append(el('div', 'bt-cname', [el('span', 'bt-dot'), s.call || s.name]), el('div', 'bt-ctype', s.type_name || BT_ERAS[b.era].names[s.type]), el('div', 'bt-pips', pips),
       s.ammo_max ? bar(s.ammo / s.ammo_max, '#d99a2b') : el('div', 'bt-bar none'), bar(s.morale / 100, s.state === 'broken' ? '#e2573f' : s.state === 'shaken' ? '#d4a52a' : '#58b878'),
       el('div', 'bt-cstate', `${stateWord(s)}${bt_settled(b, s) ? ' · hidden' : bt_sneaking(b, s) ? ' · sneaking' : ''}${b.civs.some((q) => q.follow === s.id) ? ` · +${b.civs.filter((q) => q.follow === s.id).length} survivors` : ''}${s.path.length ? ' · moving' : ''}${s.ability ? ' · ' + s.ability.kind : ''}`));
     c.querySelector('.bt-dot').style.background = SQUAD_COL[i % SQUAD_COL.length];
@@ -276,7 +276,7 @@ function showResult() {
     el('div', 'sum', b.over.summary.map((l) => el('div', null, l))));
   const m = el('div', 'menu');
   const cfg = Object.assign({}, b.cfg);
-  if (b.cfg.campaign) m.append(btn('btn main', 'Back to the map', backToMap));
+  if (b.cfg.campaign) m.append(btn('btn main', 'Volver al mapa', backToMap));
   else m.append(btn('btn main', 'Same battle again', () => start(bt_new(cfg))), btn('btn', 'New battle', setup), btn('btn', 'Title screen', leave));
   box.append(m); o.append(box); s.append(o);
 }
@@ -302,8 +302,8 @@ function openMenu() {
   ]));
   const m = el('div', 'menu');
   m.append(btn('btn main', 'Back to the battle', close), btn('btn', 'Save and quit', () => { if (b.phase === 'plan') bt_save(b); leave(); }),
-    b.cfg.campaign ? btn('btn danger', 'Retreat', () => {             // in a campaign, a retreat is a lost battle: the dead stay dead
-      bt_delete_save(); b.over = { victory: false, title: 'Retreat', text: 'You pull out.', summary: bt_summary(b) }; backToMap();
+    b.cfg.campaign ? btn('btn danger', 'Retirarse', () => {             // in a campaign, a retreat is a lost battle: the dead stay dead
+      bt_delete_save(); b.over = { victory: false, title: 'Retirada', text: 'Sacaste a tu gente.', summary: bt_summary(b) }; backToMap();
     }) : btn('btn danger', 'Abandon the battle', () => { bt_delete_save(); leave(); }));
   box.append(m); o.append(box); s.append(o);
 }

@@ -103,15 +103,21 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
 
 ## Campaign: Zona Norte (web only)
 
-**Campaign: Zona Norte** on the title screen: the northern suburbs of Buenos Aires in 2026, fought with the Battle mode.
+**Campaña: Zona Norte** on the title screen: the northern suburbs of Buenos Aires in 2026, fought with the Battle mode. Its
+screens, events and names are in Rioplatense Spanish (the battle screen itself stays in English, like the rest of the game).
+Every district's clear/assault/defence battles are fought on a drawn map of it (`layout` in `CP_ZONES`, painted by
+`bt_paint_layout`): the river where it is, the avenues, the rail lines, parks, and only its four places as the buildings
+A to D (Puerto de Olivos and Estación Maipú with the Tren de la Costa in Olivos, the cathedral and the Hipódromo above the
+barrancas in San Isidro, Tigre split by its river with one bridge, the Ford plant in Pacheco...). Hordes and rescues use
+the generated maps.
 Engine: `src/campaign.js` (pure and deterministic like a battle, saved under `outbreak.campaign.v1`); front-end:
 `src/campaign_ui.js`; tests: `test/campaign.test.js`.
 
 * **The map**: fourteen districts linked as their real neighbours are (Olivos, Florida, Villa Martelli, Munro, Martínez,
   San Isidro, Boulogne, San Fernando, Tigre, General Pacheco, Campo de Mayo, Nordelta, Escobar, Pilar), the river and the
-  Delta to the east. You start in Florida with four squads named for barrios of Vicente López. The Reapers hold Boulogne and
-  General Pacheco on the Panamericana, the Joint Task Force Campo de Mayo and Pilar, the Reborn the cathedral in San Isidro;
-  the Unicenter folk in Martínez trade, and join you once their goodwill reaches four.
+  Delta to the east. You start in Florida with four squads named for barrios of Vicente López. Los Segadores hold Boulogne and
+  General Pacheco on the Panamericana, los Milicos (the Fuerza de Tareas Conjunta) Campo de Mayo and Pilar, los Renacidos the
+  cathedral in San Isidro; los del Unicenter in Martínez trade, and join you once their goodwill reaches four.
 * **A day**: one operation on a district next to yours, fought as a battle with the district's own places as its buildings:
   *clear* it of the dead (Take the town with no rivals), *assault* a faction (their company and their reinforcements grow with
   the districts they hold), *rescue* survivors who signalled, *defend* a district under threat (a night Hold against a horde,

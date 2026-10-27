@@ -264,6 +264,7 @@ function bt_generate(b) {
   b.tiles = new Array(W * H).fill(BTILE.GRASS);
   b.buildings = [];
   b.keep = [];
+  if (b.cfg.layout && b.objective === 'take') { bt_paint_layout(b, b.cfg.layout); bt_finish_map(b); return; }
   // a north-south road and a cross street
   const rx = bt_int(b, 9, 12);
   bt_rect(b, rx, 0, rx + 1, H - 1, BTILE.ROAD);
@@ -340,6 +341,48 @@ function bt_generate(b) {
     const px = bt_int(b, 1, W - 4), py = bt_int(b, 3, H - 12);
     for (let y = py; y < py + 2; y++) for (let x = px; x < px + 3; x++) if (b.tiles[bt_idx(b, x, y)] === BTILE.GRASS && !bt_reserved(b, x, y)) b.tiles[bt_idx(b, x, y)] = BTILE.WATER;
   }
+  bt_finish_map(b);
+}
+
+// A drawn map: a real place, kept simple. Water, roads, rail lines (gravel), parks, fences, and the four buildings that
+// matter (the bases, named by cfg.places in order) plus a few others. Rows 0-3 and the last five are left for the
+// companies to come in. Rectangles are [x0, y0, x1, y1] inclusive; a building's fifth field lists its door sides (n, s, e, w).
+function bt_paint_layout(b, L) {
+  const W = b.w, H = b.h;
+  const each = (list, fn) => { for (const r of list || []) for (let y = Math.max(0, r[1]); y <= Math.min(H - 1, r[3]); y++) for (let x = Math.max(0, r[0]); x <= Math.min(W - 1, r[2]); x++) fn(x, y, r); };
+  each(L.fields, (x, y) => { if ((x * 5 + y * 3) % 4 === 0) b.tiles[bt_idx(b, x, y)] = BTILE.BRUSH; });
+  each(L.parks, (x, y) => { const h = (x * 7 + y * 13) % 6; b.tiles[bt_idx(b, x, y)] = h === 0 ? BTILE.TREE : h === 3 ? BTILE.BRUSH : BTILE.GRASS; });
+  each(L.water, (x, y) => { b.tiles[bt_idx(b, x, y)] = BTILE.WATER; });
+  each(L.rails, (x, y) => { b.tiles[bt_idx(b, x, y)] = BTILE.RUBBLE; });
+  each(L.roads, (x, y) => { b.tiles[bt_idx(b, x, y)] = BTILE.ROAD; });           // roads over water are bridges, over rails crossings
+  each(L.fences, (x, y) => { if (b.tiles[bt_idx(b, x, y)] === BTILE.GRASS || b.tiles[bt_idx(b, x, y)] === BTILE.BRUSH) b.tiles[bt_idx(b, x, y)] = BTILE.FENCE; });
+  const build = (r) => {
+    const [x0, y0, x1, y1, sides] = r, doors = [];
+    for (const d of sides || 's') {
+      if (d === 'n') doors.push([Math.floor((x0 + x1) / 2), y0]);
+      if (d === 's') doors.push([Math.floor((x0 + x1) / 2), y1]);
+      if (d === 'w') doors.push([x0, Math.floor((y0 + y1) / 2)]);
+      if (d === 'e') doors.push([x1, Math.floor((y0 + y1) / 2)]);
+    }
+    bt_building(b, x0, y0, x1, y1, doors);
+    b.buildings.push([x0, y0, x1, y1]);
+    b.keep.push([x0 - 1, y0 - 1, x1 + 1, y1 + 1]);
+  };
+  for (const r of L.bases) build(r);
+  for (const r of L.extra || []) build(r);
+  const names = b.cfg.places || [];
+  b.bases = L.bases.map((r, i) => ({ x0: r[0] + 1, y0: r[1] + 1, x1: r[2] - 1, y1: r[3] - 1, name: names[i] || 'ABCD'[i], letter: 'ABCD'[i], owner: null, prog: 0, by: null }));
+  b.keep.push([0, 0, W - 1, 3], [0, H - 5, W - 1, H - 1]);
+  // a little wear: rubble and weeds where nothing was drawn
+  for (let i = 0; i < 10; i++) {
+    const x = bt_int(b, 0, W - 1), y = bt_int(b, 4, H - 6), k = bt_idx(b, x, y);
+    if (b.tiles[k] === BTILE.GRASS && !bt_reserved(b, x, y)) b.tiles[k] = i % 2 ? BTILE.RUBBLE : BTILE.BRUSH;
+  }
+}
+
+// Windows, a clear step in front of every door and window, and nothing cut off from the dead.
+function bt_finish_map(b) {
+  const W = b.w;
   for (const q of b.buildings) if (!(b.houses || []).some((h) => q[0] + 1 === h.x0 && q[1] + 1 === h.y0)) bt_windows(b, q[0], q[1], q[2], q[3]);
   // nothing planted in front of a door or a window
   for (let k = 0; k < b.tiles.length; k++) {
@@ -349,7 +392,7 @@ function bt_generate(b) {
       const nx = x + dx, ny = y + dy;
       if (!bt_in(b, nx, ny)) continue;
       const t = b.tiles[bt_idx(b, nx, ny)];
-      if (t === BTILE.TREE || t === BTILE.WATER || t === BTILE.FENCE) b.tiles[bt_idx(b, nx, ny)] = BTILE.GRASS;
+      if (t === BTILE.TREE || t === BTILE.FENCE || (t === BTILE.WATER && b.tiles[k] === BTILE.DOOR)) b.tiles[bt_idx(b, nx, ny)] = BTILE.GRASS;   // a window may look onto the river
     }
   }
   bt_fix_connectivity(b);
@@ -497,7 +540,7 @@ function bt_deploy(b) {
     if (q) {                                                           // the men this squad has left after its earlier fights
       while (s.men.length > q.men) { const id = s.men.pop(); b.men.splice(b.men.findIndex((m) => m.id === id), 1); }
       if (q.ammo !== undefined) s.ammo = Math.min(s.ammo_max, q.ammo);
-      s.cid = q.id;
+      s.cid = q.id; if (q.type_name) s.type_name = q.type_name;
     }
   });
   if (b.objective === 'take' && b.cfg.rivals !== 'none') {
