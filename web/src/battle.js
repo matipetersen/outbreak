@@ -417,6 +417,7 @@ function bt_new(cfg) {
   bt_generate(b);
   for (const h of b.houses || []) b.barricades[bt_idx(b, h.door[0], h.door[1])] = 360;     // the survivors nailed their door shut, well: it holds until help can get there
   bt_deploy(b);
+  if (b.objective === 'take') b.reinf = { left: BT_REINFORCEMENTS[b.cfg.difficulty] || 2, sent: 0, coming: false };
   bt_seed_dead(b);
   bt_plan_wave(b);
   b.report = [bt_opening_line(b)];
@@ -431,6 +432,39 @@ function bt_opening_line(b) {
   return `${goal} ${prof.blurb}`;
 }
 
+// A squad of a side at a spot, its men in formation around it. `nextName` hands out the names.
+function bt_make_squad(b, type, side, spot, name, call, nextName) {
+  const st = bt_type_stats(b.era, type), extra = side === 'rival' ? BT_RIVALS[b.cfg.rivals].morale : 0;
+  const leader = nextName();
+  const s = { id: b.uid++, side, type, name: name || leader, call: call || leader, leader, men: [], path: [], stance: 'fire', pace: 'walk', ability: null, ammo: st.ammo, ammo_max: st.ammo,
+              morale: st.morale + extra, morale_max: st.morale + extra, state: 'steady', anchor: bt_open_spot(b, spot[0], spot[1]), facing: side === 'rival' ? [0, 1] : [0, -1], still: 9, build: 0, lures_left: type === 'scout' && side === 'you' ? 2 : 0, last_noise: -9, kills: 0, lost: 0 };
+  for (let m = 0; m < st.men; m++) {
+    const off = bt_slot(m, st.men, s.facing);
+    const p = bt_open_spot(b, s.anchor[0] + off[0], s.anchor[1] + off[1]);
+    b.men.push({ id: b.uid++, kind: 'man', squad: s.id, x: p[0], y: p[1], hp: st.hp, max_hp: st.hp, cd: bt_rand(b) * st.rate, mcd: 0, bitten: -1, spores: 0, name: m === 0 ? leader : nextName() });
+    s.men.push(b.men[b.men.length - 1].id);
+  }
+  b.squads.push(s);
+  return s;
+}
+
+// The rival company's reinforcements: when every rival squad is down, a fresh column is seen coming and arrives from the
+// north the turn after, one squad bigger than the last. Easy sends one, normal two, hard three; then nobody is left to send.
+const BT_REINFORCEMENTS = { easy: 1, normal: 2, hard: 3 };
+function bt_rival_column(b) {
+  const rv = BT_RIVALS[b.cfg.rivals], d = b.cfg.difficulty, base = d === 'easy' ? rv.forces.slice(0, 3) : d === 'hard' ? rv.forces.concat(['line']) : rv.forces.slice();
+  const extra = ['line', 'scout', 'line', 'heavy'];
+  return base.concat(extra.slice(0, (b.reinf ? b.reinf.sent : 0) + 1)).slice(0, 6);           // six squads at most on the road
+}
+function bt_send_column(b) {
+  const types = bt_rival_column(b), era = BT_ERAS[b.era] || BT_ERAS.modern;
+  const fname = bt_rival_name(b), words = era.medieval ? BT_RIVAL_TYPES_OLD : BT_RIVAL_TYPES;
+  const nextName = () => bt_pick(b, CONTENT.companions.names);
+  types.forEach((type, i) => bt_make_squad(b, type, 'rival', [types.length > 1 ? 3 + i * (b.w - 6) / (types.length - 1) : b.w / 2, 1.5], `${fname}: ${words[type]}`, fname, nextName));
+  b.reinf.sent++; b.reinf.coming = false;
+  b.report.push(`${fname} reinforcements arrive from the north: ${types.length} squads.`);
+}
+
 function bt_deploy(b) {
   const types = b.cfg.forces || BT_OBJECTIVES[b.objective].forces, era = BT_ERAS[b.era] || BT_ERAS.modern;
   const names = CONTENT.companions.names.slice();
@@ -443,20 +477,7 @@ function bt_deploy(b) {
   } else {
     for (let i = 0; i < types.length; i++) spots.push([types.length > 1 ? 4 + i * (b.w - 8) / (types.length - 1) : b.w / 2, b.h - 3.5]);
   }
-  const make = (type, i, side, spot, name, call) => {
-    const st = bt_type_stats(b.era, type), extra = side === 'rival' ? BT_RIVALS[b.cfg.rivals].morale : 0;
-    const leader = names[ni++ % names.length];
-    const s = { id: b.uid++, side, type, name: name || leader, call: call || leader, leader, men: [], path: [], stance: 'fire', pace: 'walk', ability: null, ammo: st.ammo, ammo_max: st.ammo,
-                morale: st.morale + extra, morale_max: st.morale + extra, state: 'steady', anchor: bt_open_spot(b, spot[0], spot[1]), facing: side === 'rival' ? [0, 1] : [0, -1], still: 9, build: 0, lures_left: type === 'scout' && side === 'you' ? 2 : 0, last_noise: -9, kills: 0, lost: 0 };
-    for (let m = 0; m < st.men; m++) {
-      const off = bt_slot(m, st.men, s.facing);
-      const p = bt_open_spot(b, s.anchor[0] + off[0], s.anchor[1] + off[1]);
-      const man = { id: b.uid++, kind: 'man', squad: s.id, x: p[0], y: p[1], hp: st.hp, max_hp: st.hp, cd: bt_rand(b) * st.rate, mcd: 0, bitten: -1, spores: 0, name: m === 0 ? leader : names[ni++ % names.length] };
-      b.men.push(man); s.men.push(man.id);
-    }
-    b.squads.push(s);
-    return s;
-  };
+  const make = (type, i, side, spot, name, call) => bt_make_squad(b, type, side, spot, name, call, () => names[ni++ % names.length]);
   types.forEach((type, i) => {
     const call = era.medieval ? null : BT_CALLSIGNS[i];
     const s = make(type, i, 'you', spots[i], null, call);
@@ -464,7 +485,7 @@ function bt_deploy(b) {
   });
   if (b.objective === 'take') {
     const rv = BT_RIVALS[b.cfg.rivals], d = b.cfg.difficulty;
-    const rtypes = d === 'easy' ? rv.forces.slice(0, 2) : d === 'hard' ? rv.forces.slice() : rv.forces.slice(0, 3);
+    const rtypes = d === 'easy' ? rv.forces.slice(0, 3) : d === 'hard' ? rv.forces.concat(['line']) : rv.forces.slice();
     const fname = bt_rival_name(b), words = era.medieval ? BT_RIVAL_TYPES_OLD : BT_RIVAL_TYPES;
     rtypes.forEach((type, i) => make(type, i, 'rival', [rtypes.length > 1 ? 4 + i * (b.w - 8) / (rtypes.length - 1) : b.w / 2, 2.5], `${fname}: ${words[type]}`, fname));
   }
@@ -753,8 +774,10 @@ function bt_face(b, squad_id, x, y) {
 
 function bt_begin_turn(b) {
   if (b.phase !== 'plan' || b.over) return false;
+  b.report = [];
+  if (b.reinf && b.reinf.coming) bt_send_column(b);
   bt_rival_orders(b);
-  b.phase = 'resolve'; b.t = 0; b.report = [];
+  b.phase = 'resolve'; b.t = 0;
   const era = BT_ERAS[b.era] || BT_ERAS.modern;
   for (const s of b.squads) {
     if (!bt_alive(b, s) || !s.ability) continue;
@@ -1342,6 +1365,11 @@ function bt_end_turn(b) {
   b.lures = b.lures.filter((l) => l.turns > 0);
   bt_check_over(b, true);
   if (b.over) return;
+  // the rivals' last squad is down: if they have anyone left to send, a column is seen coming
+  if (b.reinf && !b.reinf.coming && b.reinf.sent < b.reinf.left && b.turn < b.turns && !b.men.some((m) => bt_side_of(b, m) === 'rival')) {
+    b.reinf.coming = true;
+    b.report.push(`Lookouts see a column of ${bt_rival_name(b)} on the north road: ${bt_rival_column(b).length} squads, here next turn.`);
+  }
   b.turn++; b.t = 0; b.phase = 'plan';
   bt_plan_wave(b);
 }
@@ -1365,7 +1393,9 @@ function bt_check_over(b, endOfTurn) {
     // holding every base wins early, but only once it has been held through a whole turn: the other side gets one turn to strike back
     const all = mine === n ? 'you' : theirs === n ? 'rival' : null, held = all && b.hold_all === all;
     b.hold_all = all;
-    if (all && !held) b.report.push(all === 'you' ? `Every base is yours. Hold them all through the next turn and the town is won.` : `${bt_rival_name(b)} hold every base. Take one back next turn, or the town is theirs.`);
+    if (all && !held) b.report.push(all === 'you' ? `Every base is yours. Hold them all through the next turn${b.reinf && b.reinf.sent < b.reinf.left ? `, and through whatever ${bt_rival_name(b)} still send,` : ''} and the town is won.` : `${bt_rival_name(b)} hold every base. Take one back next turn, or the town is theirs.`);
+    const spent = !b.reinf || (b.reinf.sent >= b.reinf.left && !b.squads.some((s) => !bt_mine(s) && s.men.length));   // nobody left to send against you
+    if (held && all === 'you' && !spent && b.turn < b.turns) { b.report.push(`Every base is yours, but ${bt_rival_name(b)} still have men to send.`); return; }
     if (held && all === 'you') return win('The town is yours', `Every building worth having is in your hands${b.squads.some((s) => !bt_mine(s) && s.men.length) ? `, and ${bt_rival_name(b)} have nothing` : ''}.`);
     if (held && all === 'rival') return lose('The town is theirs', `${bt_rival_name(b)} hold every building that mattered.`);
     if (b.turn >= b.turns) return mine > theirs ? win('The bigger share', `You hold ${mine} of ${n}; ${bt_rival_name(b)} hold ${theirs}.`)
@@ -1383,7 +1413,7 @@ function bt_summary(b) {
   }
   if (b.objective === 'take') {
     const left = b.squads.filter((s) => !bt_mine(s)).reduce((a, s) => a + s.men.length, 0);
-    lines.push(`${bt_rival_name(b)}: ${b.rival_lost} dead, ${left} left.`);
+    lines.push(`${bt_rival_name(b)}: ${b.rival_lost} dead, ${left} left${b.reinf && b.reinf.sent ? `, after ${b.reinf.sent} column${b.reinf.sent > 1 ? 's' : ''} of reinforcements` : ''}.`);
     lines.push('Bases: ' + b.bases.map((q) => `${q.letter} ${q.name} (${q.owner === 'you' ? 'yours' : q.owner === 'rival' ? 'theirs' : 'nobody'})`).join(', ') + '.');
   }
   if (b.turned) lines.push(`${b.turned} of your own turned.`);
