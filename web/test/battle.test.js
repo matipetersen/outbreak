@@ -385,4 +385,16 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   assert(!hid.rv.some((r) => r.pace === 'sneak' && r.type !== 'scout'), 'and nobody goes round what they cannot see');
   assert(b.squads.filter((x) => !OB.bt_mine(x) && x.type === 'scout').every((x) => x.pace === 'sneak' || !x.path.length), 'lookouts creep');
 }
+{ // exfil: an escort stopping at the very top of the EXIT strip still gets everyone with it out
+  const b = mk({ objective: 'rescue', zombies: 'classic', seed: 3 });
+  b.zeds.length = 0;
+  const s = b.squads[0], door = b.house.door;
+  OB.bt_order_move(b, s.id, [[door[0], door[1] + 1]]);
+  for (let t = 0; t < 8 && !b.over; t++) {
+    if (b.civs.length && b.civs.every((q) => q.follow === s.id)) OB.bt_order_move(b, s.id, [[Math.floor(s.anchor[0]), b.extract_y]]);
+    b.wave.count = 0; OB.bt_run_turn(b); b.zeds.length = 0;
+  }
+  assert.strictEqual(b.saved, b.civ_total, `all of them out (${b.saved}/${b.civ_total})`);
+  assert(b.over && b.over.victory);
+}
 console.log('battle tests passed');

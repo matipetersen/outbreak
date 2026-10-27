@@ -403,7 +403,7 @@ function bt_new(cfg) {
     pending: [], wave: null, kills: 0, lost: 0, turned: 0, saved: 0, civ_lost: 0, civ_total: 0, report: [], over: null, refuge: null, house: null, extract_y: null, bases: [], rival_lost: 0, hold_all: null,
   };
   bt_generate(b);
-  if (b.house) b.barricades[bt_idx(b, b.house.door[0], b.house.door[1])] = 160;     // the survivors have nailed their door shut
+  if (b.house) b.barricades[bt_idx(b, b.house.door[0], b.house.door[1])] = 360;     // the survivors nailed their door shut, well: it holds until help can get there
   bt_deploy(b);
   bt_seed_dead(b);
   bt_plan_wave(b);
@@ -1038,12 +1038,18 @@ function bt_civs_step(b, fx) {
         if (dist(s.anchor, [c.x, c.y]) <= 2.5 || (hiding && dist(s.anchor, door) <= 2.5)) {
           c.follow = s.id;
           const dk = bt_idx(b, hs.door[0], hs.door[1]);
-          if (bt_has_barricade(b, dk)) { delete b.barricades[dk]; bt_invalidate(b); b.report.push(`The ${(BT_ERAS[b.era] || BT_ERAS.modern).survivors} pull their barricade down and come out to ${s.name}.`); }
+          if (bt_has_barricade(b, dk)) { delete b.barricades[dk]; bt_invalidate(b); b.report.push(`The ${(BT_ERAS[b.era] || BT_ERAS.modern).survivors} pull their barricade down and follow ${s.name}. Lead them to the EXIT strip at the bottom.`); }
           break;
         }
       }
     }
-    if (c.follow !== null) {
+    // close to the way out with an escort (or nothing in reach), they make the last stretch on their own, at a run
+    const escort = c.follow !== null ? bt_squad(b, c.follow) : null;
+    const clear = !b.zeds.some((z) => Math.hypot(z.x - c.x, z.y - c.y) < 3);
+    if (b.extract_y !== null && c.y >= b.extract_y - 6 && (escort || clear)) {
+      const f = bt_hfield(b, 'exit', bt_exit_tiles(b)), nx = bt_descend(b, f, c.x, c.y, 'h');
+      bt_move(b, c, nx ? nx[0] + 0.5 : c.x, nx ? nx[1] + 0.5 : b.h - 0.5, 1.8 * bt_speed_factor(b, c.x, c.y, 'h') * BT.DT, 'h');
+    } else if (c.follow !== null) {
       const s = bt_squad(b, c.follow), i = b.civs.filter((q) => q.follow === s.id).indexOf(c);
       const back = 1.1 + Math.floor(i / 3) * 0.55, across = ((i % 3) - 1) * 0.55;
       let tx = s.anchor[0] - s.facing[0] * back - s.facing[1] * across, ty = s.anchor[1] - s.facing[1] * back + s.facing[0] * across;
@@ -1055,12 +1061,19 @@ function bt_civs_step(b, fx) {
         if (nx) bt_move(b, c, nx[0] + 0.5, nx[1] + 0.5, speed * BT.DT, 'h');
       }
     }
-    if (b.extract_y !== null && c.y >= b.extract_y) {
+    const out = escort && escort.anchor[1] >= b.extract_y && Math.hypot(escort.anchor[0] - c.x, escort.anchor[1] - c.y) <= 4;   // the escort is out, and they are with it
+    if (b.extract_y !== null && (c.y >= b.extract_y || out)) {
       b.civs.splice(b.civs.indexOf(c), 1); b.saved++;
       fx.push({ kind: 'saved', x: c.x, y: c.y });
       b.report.push(`A survivor reached safety (${b.saved}/${b.civ_total}).`);
     }
   }
+}
+
+function bt_exit_tiles(b) {
+  const out = [];
+  for (let y = b.extract_y; y < b.h; y++) for (let x = 0; x < b.w; x++) if (bt_cost(b, bt_idx(b, x, y), 'h') !== Infinity) out.push(bt_idx(b, x, y));
+  return out;
 }
 
 // What a zombie wants: someone it sees or smells, else the loudest thing it hears, else the place the living are.
@@ -1091,7 +1104,7 @@ function bt_perceive(b, z, prof, dark) {
 function bt_default_goal(b, z, prof, dark) {
   if (prof.sun_burn && !dark) return 'shelter';
   if (b.refuge) return 'refuge';
-  if (b.civs.length) return z.id % 3 === 0 ? 'civs' : 'idle';
+  if (b.civs.length) return z.id % 4 === 0 ? 'civs' : 'idle';      // a quarter of them have the survivors' scent; the rest stand
   if (b.objective === 'take') return z.id % 3 === 0 ? 'living' : 'idle';      // a third of them have the scent of the survivors; the rest stand
   return 'living';
 }
