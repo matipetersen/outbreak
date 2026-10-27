@@ -1,38 +1,85 @@
 // ---------------------------------------------------------------- campaign: Zona Norte (web only)
-// A campaign over the northern suburbs of Buenos Aires, 2026. You start with a company holding one barrio (Florida, in
-// Vicente López) and grow from there. Every day you pick one operation on the map: clear a district of the dead, assault a
-// faction's district, rescue survivors, defend a district under threat. Operations are fought as battles (battle.js) with
-// your own company, whose losses stay lost. Every night the map moves: your districts produce supplies and recruits, the
+// A campaign over the northern suburbs of Buenos Aires, 2026, written in Rioplatense Spanish (the rest of the game is in
+// English). You start with a company holding one barrio (Florida, in Vicente López) and grow from there. Every day you pick
+// one operation on the map: clear a district of the dead, assault a faction's district, rescue survivors, defend a district
+// under threat. Operations are fought as battles (battle.js) with your own company, whose losses stay lost; a district's
+// battles are fought on a drawn map of it. Every night the map moves: your districts produce supplies and recruits, the
 // dead spread, the factions expand and come for you, and something happens that asks you to decide. What you decide
 // changes the map. The state is plain JSON with its own random stream, like a battle.
 
 const CP = { SAVE_KEY: 'outbreak.campaign.v1', WIN_ZONES: 8, HOSTILE: ['raiders', 'military', 'cult'] };
 
+// Every faction's name is a plural, so the sentences read the same for all of them.
 const CP_FACTIONS = {
-  you: { name: 'Your people', color: '#55b3c4' },
-  raiders: { name: 'The Reapers', color: '#e2573f', blurb: 'Gangs that took the Panamericana when the police left. They loot, they shoot, they run when it goes badly.', expand: 0.45 },
-  military: { name: 'Joint Task Force', color: '#7fa05a', blurb: 'What is left of the army, dug in at Campo de Mayo. Drilled, well armed, and following orders nobody gives any more.', expand: 0.3 },
-  cult: { name: 'The Reborn', color: '#b87ad0', blurb: 'They think the infected are ascended, and they hold the cathedral. Badly armed, and they do not break.', expand: 0.35 },
-  enclave: { name: 'The Unicenter folk', color: '#d99a2b', blurb: 'Families barricaded in the shopping centre. They trade, and they remember favours.' },
+  you: { name: 'Los tuyos', color: '#55b3c4' },
+  raiders: { name: 'Los Segadores', color: '#e2573f', blurb: 'Bandas que se quedaron con la Panamericana cuando se fue la policía. Saquean, tiran, y se borran cuando la cosa se pone fea.', expand: 0.45 },
+  military: { name: 'Los Milicos', color: '#7fa05a', blurb: 'Lo que queda de la Fuerza de Tareas Conjunta, atrincherada en Campo de Mayo. Entrenados, bien armados, y cumpliendo órdenes que ya nadie da.', expand: 0.3 },
+  cult: { name: 'Los Renacidos', color: '#b87ad0', blurb: 'Creen que los infectados ascendieron, y tienen la catedral. Mal armados, pero no aflojan nunca.', expand: 0.35 },
+  enclave: { name: 'Los del Unicenter', color: '#d99a2b', blurb: 'Familias atrincheradas en el shopping. Comercian, y se acuerdan de los favores.' },
 };
+// The squad types, as the campaign calls them.
+const CP_TYPES = { line: 'Fusileros', shield: 'Escudos', heavy: 'Ametralladora', scout: 'Exploradores' };
 
-// The map: positions are approximate (0-100, north up; the river and the Delta are to the east and north-east),
-// the links follow the real neighbours closely enough to play.
+// The map: positions are approximate (0-100, north up; the river and the Delta are to the east and north-east), the links
+// follow the real neighbours closely enough to play. `layout` is the district drawn for its battles (see bt_paint_layout):
+// a 24 x 32 grid, north up, its four `bases` in the order of `places`.
 const CP_ZONES = {
-  olivos: { name: 'Olivos', partido: 'Vicente López', x: 80, y: 80, adj: ['florida', 'martinez'], places: ['the Puerto de Olivos', 'Estación Maipú', 'the Quinta gates', 'the Libertador petrol station'], refuge: 'the yacht club' },
-  florida: { name: 'Florida', partido: 'Vicente López', x: 64, y: 84, adj: ['olivos', 'munro', 'martelli', 'martinez'], places: ['Estación Florida', 'the Av. Maipú supermarket', 'the parish hall', 'the school gym'], refuge: 'the school gym' },
-  martelli: { name: 'Villa Martelli', partido: 'Vicente López', x: 50, y: 93, adj: ['florida', 'munro'], places: ['Tecnópolis', 'the General Paz overpass', 'the bus depot', 'the clinic'], refuge: 'the bus depot' },
-  munro: { name: 'Munro', partido: 'Vicente López', x: 48, y: 79, adj: ['florida', 'martelli', 'boulogne', 'martinez'], places: ['the Panamericana overpass', 'the hardware store', 'the sports club', 'the bakery'], refuge: 'the sports club' },
-  martinez: { name: 'Martínez', partido: 'San Isidro', x: 70, y: 68, adj: ['olivos', 'florida', 'munro', 'sanisidro', 'boulogne'], places: ['the Unicenter', 'the cinema', 'the car park', 'the hypermarket'], refuge: 'the Unicenter' },
-  sanisidro: { name: 'San Isidro', partido: 'San Isidro', x: 78, y: 56, adj: ['martinez', 'boulogne', 'sanfernando'], places: ['the cathedral', 'the Hipódromo stands', 'Estación San Isidro', 'the old town hall'], refuge: 'the cathedral' },
-  boulogne: { name: 'Boulogne', partido: 'San Isidro', x: 54, y: 62, adj: ['munro', 'martinez', 'sanisidro', 'campomayo', 'pacheco'], places: ['the Panamericana toll booth', 'the warehouse', 'the school', 'the service station'], refuge: 'the warehouse' },
-  sanfernando: { name: 'San Fernando', partido: 'San Fernando', x: 78, y: 42, adj: ['sanisidro', 'tigre', 'pacheco'], places: ['the airport hangars', 'the boatyard', 'the hospital', 'the canal locks'], refuge: 'the hospital', feature: 'hospital' },
-  tigre: { name: 'Tigre', partido: 'Tigre', x: 72, y: 28, adj: ['sanfernando', 'pacheco', 'nordelta'], places: ['Puerto de Frutos', 'Estación Delta', 'the Parque de la Costa gates', 'the rowing club'], refuge: 'the rowing club' },
-  pacheco: { name: 'General Pacheco', partido: 'Tigre', x: 54, y: 40, adj: ['boulogne', 'sanfernando', 'tigre', 'nordelta', 'campomayo', 'escobar'], places: ['the Ford plant', 'the loading bays', 'the canteen', 'the parts depot'], refuge: 'the Ford plant', feature: 'depot' },
-  campomayo: { name: 'Campo de Mayo', partido: 'San Miguel', x: 34, y: 54, adj: ['boulogne', 'pacheco', 'pilar'], places: ['the barracks', 'the armoury', 'the airfield', 'the motor pool'], refuge: 'the barracks', feature: 'armory' },
-  nordelta: { name: 'Nordelta', partido: 'Tigre', x: 60, y: 20, adj: ['tigre', 'pacheco', 'escobar'], places: ['the gatehouse', 'the lake club', 'the shopping street', 'the school'], refuge: 'the gatehouse' },
-  escobar: { name: 'Escobar', partido: 'Escobar', x: 42, y: 10, adj: ['nordelta', 'pacheco', 'pilar'], places: ['the flower market', 'the Panamericana interchange', 'the cooperative', 'the church'], refuge: 'the cooperative' },
-  pilar: { name: 'Pilar', partido: 'Pilar', x: 18, y: 24, adj: ['campomayo', 'escobar'], places: ['the industrial park', 'the cold store', 'the freight yard', 'the chapel'], refuge: 'the cold store' },
+  olivos: { name: 'Olivos', partido: 'Vicente López', x: 80, y: 80, adj: ['florida', 'martinez'], refuge: 'Club náutico',
+    places: ['Puerto de Olivos', 'Estación Maipú', 'Quinta de Olivos', 'Estación de servicio Libertador'],
+    layout: { water: [[20, 0, 23, 31], [17, 5, 19, 9]], roads: [[9, 0, 10, 31], [0, 15, 19, 15]], rails: [[18, 17, 18, 31]], parks: [[0, 22, 8, 26]],
+              fences: [[0, 21, 3, 21], [5, 21, 8, 21]], bases: [[11, 4, 16, 9, 'ws'], [13, 19, 17, 23, 'we'], [2, 17, 6, 20, 'ns'], [3, 5, 7, 8, 'e']] } },
+  florida: { name: 'Florida', partido: 'Vicente López', x: 64, y: 84, adj: ['olivos', 'munro', 'martelli', 'martinez'], refuge: 'Gimnasio de la escuela',
+    places: ['Estación Florida', 'Súper de Av. Maipú', 'Salón parroquial', 'Gimnasio de la escuela'],
+    layout: { roads: [[16, 0, 17, 31], [0, 9, 15, 9]], rails: [[0, 16, 23, 16]], parks: [[9, 3, 13, 7]],
+              bases: [[7, 17, 12, 20, 'n'], [18, 4, 22, 8, 'w'], [2, 3, 6, 7, 's'], [3, 21, 9, 25, 'n']] } },
+  martelli: { name: 'Villa Martelli', partido: 'Vicente López', x: 50, y: 93, adj: ['florida', 'munro'], refuge: 'Terminal de colectivos',
+    places: ['Tecnópolis', 'Puente de General Paz', 'Terminal de colectivos', 'Salita'],
+    layout: { roads: [[0, 25, 23, 26], [12, 0, 12, 24]], parks: [[2, 11, 10, 14]],
+              bases: [[2, 4, 10, 10, 'se'], [14, 20, 18, 23, 's'], [15, 6, 21, 11, 'w'], [3, 16, 7, 20, 'e']] } },
+  munro: { name: 'Munro', partido: 'Vicente López', x: 48, y: 79, adj: ['florida', 'martelli', 'boulogne', 'martinez'], refuge: 'Club',
+    places: ['Puente de la Panamericana', 'Ferretería', 'Club', 'Panadería'],
+    layout: { roads: [[1, 0, 3, 31], [4, 17, 23, 17], [14, 0, 14, 16]], parks: [[16, 10, 22, 13]],
+              bases: [[5, 11, 8, 15, 'w'], [16, 19, 20, 22, 'n'], [16, 3, 22, 8, 'ws'], [7, 20, 11, 23, 'n']] } },
+  martinez: { name: 'Martínez', partido: 'San Isidro', x: 70, y: 68, adj: ['olivos', 'florida', 'munro', 'sanisidro', 'boulogne'], refuge: 'Unicenter',
+    places: ['Unicenter', 'Cine', 'Estacionamiento', 'Hipermercado'],
+    layout: { roads: [[0, 0, 1, 31], [2, 16, 23, 16], [13, 0, 13, 15]],
+              bases: [[3, 4, 11, 11, 'se'], [15, 4, 20, 8, 'w'], [15, 10, 20, 14, 'ws'], [5, 19, 11, 23, 'n']] } },
+  sanisidro: { name: 'San Isidro', partido: 'San Isidro', x: 78, y: 56, adj: ['martinez', 'boulogne', 'sanfernando'], refuge: 'Catedral',
+    places: ['Catedral', 'Tribunas del Hipódromo', 'Estación San Isidro', 'Viejo municipio'],
+    layout: { water: [[21, 0, 23, 31]], fields: [[18, 0, 20, 31]], rails: [[10, 0, 10, 31]], roads: [[0, 13, 17, 13], [14, 0, 14, 12]], parks: [[11, 4, 13, 9], [1, 8, 8, 11]],
+              bases: [[15, 4, 19, 9, 'w'], [2, 3, 8, 7, 's'], [11, 17, 15, 20, 'w'], [2, 18, 7, 22, 'e']] } },
+  boulogne: { name: 'Boulogne', partido: 'San Isidro', x: 54, y: 62, adj: ['munro', 'martinez', 'sanisidro', 'campomayo', 'pacheco'], refuge: 'Galpón',
+    places: ['Peaje de la Panamericana', 'Galpón', 'Escuela', 'Estación de servicio'],
+    layout: { roads: [[10, 0, 12, 31], [0, 18, 9, 18]], fields: [[16, 3, 22, 12]],
+              bases: [[13, 8, 16, 11, 'w'], [2, 6, 8, 12, 'e'], [16, 15, 21, 19, 'w'], [13, 21, 17, 24, 'w']] } },
+  sanfernando: { name: 'San Fernando', partido: 'San Fernando', x: 78, y: 42, adj: ['sanisidro', 'tigre', 'pacheco'], refuge: 'Hospital', feature: 'hospital',
+    places: ['Hangares del aeropuerto', 'Astillero', 'Hospital', 'Esclusas del canal'],
+    layout: { water: [[21, 0, 23, 31], [8, 15, 20, 16]], roads: [[1, 9, 10, 10], [6, 0, 6, 31]],
+              bases: [[1, 3, 9, 7, 's'], [14, 4, 19, 8, 's'], [9, 21, 15, 25, 'w'], [14, 18, 18, 21, 'w']] } },
+  tigre: { name: 'Tigre', partido: 'Tigre', x: 72, y: 28, adj: ['sanfernando', 'pacheco', 'nordelta'], refuge: 'Club de remo',
+    places: ['Puerto de Frutos', 'Estación Delta', 'Entrada del Parque de la Costa', 'Club de remo'],
+    layout: { water: [[11, 0, 12, 31]], roads: [[0, 14, 23, 14]], rails: [[21, 15, 21, 31]], parks: [[14, 9, 22, 12]],
+              bases: [[3, 4, 9, 9, 'e'], [14, 18, 19, 22, 'n'], [15, 4, 20, 8, 's'], [3, 17, 9, 21, 'e']] } },
+  pacheco: { name: 'General Pacheco', partido: 'Tigre', x: 54, y: 40, adj: ['boulogne', 'sanfernando', 'tigre', 'nordelta', 'campomayo', 'escobar'], refuge: 'Planta Ford', feature: 'depot',
+    places: ['Planta Ford', 'Playa de carga', 'Comedor', 'Depósito de repuestos'],
+    layout: { roads: [[0, 15, 23, 15], [12, 16, 12, 31]], fences: [[0, 13, 13, 13]],
+              bases: [[1, 3, 12, 11, 'se'], [14, 4, 21, 9, 'w'], [3, 18, 8, 22, 'n'], [15, 19, 21, 23, 'w']] } },
+  campomayo: { name: 'Campo de Mayo', partido: 'San Miguel', x: 34, y: 54, adj: ['boulogne', 'pacheco', 'pilar'], refuge: 'Cuadras', feature: 'armory',
+    places: ['Cuadras', 'Arsenal', 'Aeródromo', 'Parque automotor'],
+    layout: { fields: [[0, 4, 23, 26]], roads: [[2, 14, 21, 15]], fences: [[0, 12, 9, 12], [13, 12, 23, 12]],
+              bases: [[2, 4, 8, 9, 's'], [15, 4, 19, 8, 's'], [14, 18, 17, 21, 'n'], [3, 18, 10, 23, 'n']] } },
+  nordelta: { name: 'Nordelta', partido: 'Tigre', x: 60, y: 20, adj: ['tigre', 'pacheco', 'escobar'], refuge: 'Garita de entrada',
+    places: ['Garita de entrada', 'Club del lago', 'Paseo comercial', 'Colegio'],
+    layout: { water: [[8, 10, 15, 18], [17, 20, 21, 24]], roads: [[3, 0, 3, 26], [0, 26, 23, 26]], parks: [[16, 2, 22, 7]],
+              bases: [[10, 21, 13, 24, 's'], [16, 11, 20, 15, 'n'], [4, 12, 7, 18, 'w'], [5, 3, 10, 7, 's']] } },
+  escobar: { name: 'Escobar', partido: 'Escobar', x: 42, y: 10, adj: ['nordelta', 'pacheco', 'pilar'], refuge: 'Cooperativa',
+    places: ['Mercado de flores', 'Cruce de la Panamericana', 'Cooperativa', 'Iglesia'],
+    layout: { roads: [[11, 0, 12, 31], [0, 13, 10, 13]], fields: [[14, 3, 22, 8], [1, 15, 9, 16]],
+              bases: [[2, 4, 8, 9, 's'], [13, 11, 16, 14, 'w'], [15, 20, 21, 24, 'w'], [3, 18, 7, 22, 'e']] } },
+  pilar: { name: 'Pilar', partido: 'Pilar', x: 18, y: 24, adj: ['campomayo', 'escobar'], refuge: 'Frigorífico',
+    places: ['Parque industrial', 'Frigorífico', 'Playa ferroviaria', 'Capilla'],
+    layout: { roads: [[0, 13, 23, 13], [8, 0, 8, 12]], rails: [[0, 16, 23, 16]],
+              bases: [[1, 3, 6, 8, 'e'], [16, 3, 22, 9, 'w'], [11, 18, 17, 22, 'n'], [2, 20, 6, 24, 'e']], extra: [[10, 3, 14, 7, 's']] } },
 };
 const CP_START = {
   florida: ['you', 0], martinez: ['enclave', 0], sanisidro: ['cult', 1], boulogne: ['raiders', 1], pacheco: ['raiders', 1],
@@ -40,9 +87,9 @@ const CP_START = {
   sanfernando: [null, 2], tigre: [null, 3], nordelta: [null, 2], escobar: [null, 2],
 };
 const CP_FEATURES = {
-  hospital: 'Hospital: two more recruits a day while you hold it.',
-  depot: 'Depot: three more supplies a day while you hold it.',
-  armory: 'Armoury: you can raise machine-gun teams while you hold it.',
+  hospital: 'Hospital: dos reclutas más por día mientras lo tengas.',
+  depot: 'Depósito: tres suministros más por día mientras lo tengas.',
+  armory: 'Arsenal: mientras lo tengas, podés armar equipos de ametralladora.',
 };
 // Squads are named for the barrios their people come from.
 const CP_CALLS = ['Florida', 'Carapachay', 'La Lucila', 'Villa Adelina', 'Olivos', 'Munro', 'Martelli', 'Boulogne', 'Beccar', 'Victoria', 'Don Torcuato', 'Benavídez'];
@@ -69,7 +116,7 @@ function cp_new(cfg) {
   };
   for (const [id, [owner, dead]] of Object.entries(CP_START)) cs.zones[id] = { owner, dead, survivors: 0, cache: false };
   for (const type of ['line', 'shield', 'line', 'scout']) cp_add_squad(cs, type);
-  cp_log(cs, 'Florida is yours: a school gym, a supermarket, the station. Everything past Av. Maipú belongs to somebody else, or to the dead.');
+  cp_log(cs, 'Florida es tuya: el gimnasio de la escuela, el súper, la estación. Pasando Av. Maipú todo es de otro, o de los muertos.');
   return cs;
 }
 
@@ -88,9 +135,9 @@ function cp_borders(cs, a, owner) { return CP_ZONES[a].adj.some((n) => cs.zones[
 
 function cp_add_squad(cs, type) {
   const used = new Set(cs.company.map((q) => q.call));
-  const call = CP_CALLS.find((c) => !used.has(c)) || `Squad ${cs.next_id}`;
+  const call = CP_CALLS.find((c) => !used.has(c)) || `Escuadra ${cs.next_id}`;
   const st = bt_type_stats('modern', type);
-  const q = { id: cs.next_id++, type, men: st.men, call, name: `${call} · ${BT_ERAS.modern.names[type]}` };
+  const q = { id: cs.next_id++, type, men: st.men, call, name: `${call} · ${CP_TYPES[type]}` };
   cs.company.push(q);
   return q;
 }
@@ -100,10 +147,10 @@ const cp_squad_max = (q) => bt_type_stats('modern', q.type).men;
 // Fill a squad's empty places from the recruits: one recruit a man.
 function cp_refill(cs, id) {
   const q = cs.company.find((x) => x.id === id);
-  if (!q) return 'No such squad.';
+  if (!q) return 'Esa escuadra no existe.';
   const need = cp_squad_max(q) - q.men;
-  if (need <= 0) return 'They are at full strength.';
-  if (cs.recruits <= 0) return 'No recruits to send them.';
+  if (need <= 0) return 'Ya están completos.';
+  if (cs.recruits <= 0) return 'No hay reclutas para mandarles.';
   const n = Math.min(need, cs.recruits);
   q.men += n; cs.recruits -= n;
   return null;
@@ -111,15 +158,15 @@ function cp_refill(cs, id) {
 // Raise a new squad: recruits for every man, and supplies for their weapons. Machine guns need the armoury.
 function cp_raise_cost(type) { return { recruits: BT_TYPES[type].men, supplies: BT_ARMY.cost[type] * 2 }; }
 function cp_raise(cs, type) {
-  if (!BT_TYPES[type]) return 'Unknown squad.';
-  if (cs.company.length >= BT_ARMY.max) return 'Five squads is all one company can lead.';
-  if (type === 'heavy' && cs.zones.campomayo.owner !== 'you') return 'Machine guns come from the armoury at Campo de Mayo.';
+  if (!BT_TYPES[type]) return 'Escuadra desconocida.';
+  if (cs.company.length >= BT_ARMY.max) return 'Cinco escuadras es todo lo que puede manejar una compañía.';
+  if (type === 'heavy' && cs.zones.campomayo.owner !== 'you') return 'Las ametralladoras salen del arsenal de Campo de Mayo.';
   const c = cp_raise_cost(type);
-  if (cs.recruits < c.recruits) return `Needs ${c.recruits} recruits.`;
-  if (cs.supplies < c.supplies) return `Needs ${c.supplies} supplies.`;
+  if (cs.recruits < c.recruits) return `Hacen falta ${c.recruits} reclutas.`;
+  if (cs.supplies < c.supplies) return `Hacen falta ${c.supplies} suministros.`;
   cs.recruits -= c.recruits; cs.supplies -= c.supplies;
   const q = cp_add_squad(cs, type);
-  cp_log(cs, `${q.name} is raised.`);
+  cp_log(cs, `Se arma ${q.name}.`);
   return null;
 }
 
@@ -145,23 +192,23 @@ function cp_ops(cs) {
 function cp_op_words(cs, op) {
   const z = op.zone ? CP_ZONES[op.zone] : null, f = op.by && CP_FACTIONS[op.by];
   switch (op.kind) {
-    case 'clear': return { title: `Clear ${z.name}`, sub: `Take four buildings back from the dead (${['hardly any', 'a few', 'many', 'swarms of'][cs.zones[op.zone].dead]} of them).${cs.zones[op.zone].cache ? ' A police armoury is in there.' : ''}` };
-    case 'assault': return { title: `Assault ${z.name}`, sub: `Take it from ${f.name}. They hold ${cp_held_by(cs, op.by).length} districts: the more they hold, the more they send.` };
-    case 'defend': return { title: `Defend ${z.name}`, sub: op.by === 'dead' ? 'A horde is coming. Hold the refuge through the night.' : `${f.name} are coming for it. Keep more of its buildings than they take.` };
-    case 'abandon': return { title: `Abandon ${z.name}`, sub: `Pull everyone out. The district is lost, the company is spared. Does not take the day.` };
-    case 'rescue': return { title: `Rescue in ${z.name}`, sub: 'People are holed up in three houses. Every one you bring out is a recruit.' };
-    case 'trade': return { title: `Trade with ${CP_FACTIONS.enclave.name}`, sub: 'Three supplies for their goodwill. Does not take the day.' };
-    case 'rest': return { title: 'Rest', sub: 'No fighting today. The wounded recover: two extra recruits.' };
+    case 'clear': return { title: `Limpiar ${z.name}`, sub: `Recuperar cuatro edificios de los muertos (${['casi ninguno', 'unos pocos', 'muchos', 'una marea'][cs.zones[op.zone].dead]}).${cs.zones[op.zone].cache ? ' Ahí adentro hay un arsenal de la policía.' : ''}` };
+    case 'assault': return { title: `Atacar ${z.name}`, sub: `Sacársela a ${f.name}. Tienen ${cp_held_by(cs, op.by).length} barrios: cuantos más tienen, más gente mandan.` };
+    case 'defend': return { title: `Defender ${z.name}`, sub: op.by === 'dead' ? 'Viene una horda. Aguantá el refugio toda la noche.' : `${f.name} vienen a buscarla. Quedate con más edificios que ellos.` };
+    case 'abandon': return { title: `Abandonar ${z.name}`, sub: 'Sacás a todos. Perdés el barrio, salvás a la compañía. No gasta el día.' };
+    case 'rescue': return { title: `Rescate en ${z.name}`, sub: 'Hay gente encerrada en tres casas. Cada uno que saques es un recluta.' };
+    case 'trade': return { title: `Comerciar con ${CP_FACTIONS.enclave.name}`, sub: 'Tres suministros a cambio de su buena voluntad. No gasta el día.' };
+    case 'rest': return { title: 'Descansar', sub: 'Hoy no se pelea. Los heridos se recuperan: dos reclutas más.' };
     default: return { title: op.kind, sub: '' };
   }
 }
 
-// The battle an operation is fought as: your company, the district's places, the enemy it belongs to.
+// The battle an operation is fought as: your company, the district's drawn map and places, the enemy it belongs to.
 function cp_battle_cfg(cs, op) {
   const zid = op.zone, z = cs.zones[zid], meta = CP_ZONES[zid];
   const cfg = { era: 'modern', zombies: cs.zombies, difficulty: cs.difficulty, seed: Math.floor(cp_rand(cs) * 1073741824), campaign: true, zone: zid, op: op.kind,
-                company: cs.company.filter((q) => q.men > 0).map((q) => ({ id: q.id, type: q.type, men: q.men, name: q.name, call: q.call })),
-                places: meta.places, refuge_name: meta.refuge };
+                company: cs.company.filter((q) => q.men > 0).map((q) => ({ id: q.id, type: q.type, men: q.men, name: q.name, call: q.call, type_name: CP_TYPES[q.type] })),
+                places: meta.places, refuge_name: meta.refuge, layout: meta.layout };
   const held = (f) => cp_held_by(cs, f).length, left = (f) => Math.max(0, Math.min(2, held(f) - 1));
   const diff = { easy: -1, normal: 0, hard: 1 }[cs.difficulty] || 0;
   if (op.kind === 'clear') Object.assign(cfg, { objective: 'take', rivals: 'none', density: 0.55 + 0.3 * z.dead, turns: 10 });
@@ -175,32 +222,32 @@ function cp_battle_cfg(cs, op) {
 
 // Choose an operation. Battles return their battle config (and wait for cp_finish_battle); the rest happen at once.
 function cp_choose(cs, op) {
-  if (cs.over || cs.event || cs.op) return { error: 'Not now.' };
+  if (cs.over || cs.event || cs.op) return { error: 'Ahora no.' };
   const real = cp_ops(cs).find((o) => o.kind === op.kind && o.zone === op.zone);
-  if (!real) return { error: 'That is not possible today.' };
+  if (!real) return { error: 'Eso hoy no se puede.' };
   op = real;
   const z = op.zone ? cs.zones[op.zone] : null;
   if (op.kind === 'abandon') {
     const by = cs.threat.by;
     z.owner = by === 'dead' ? null : by; if (by === 'dead') z.dead = 3;
-    cp_log(cs, `You pull out of ${CP_ZONES[op.zone].name}. ${by === 'dead' ? 'The dead have it now.' : `${CP_FACTIONS[by].name} move in.`}`);
+    cp_log(cs, `Sacaste a todos de ${CP_ZONES[op.zone].name}. ${by === 'dead' ? 'Ahora es de los muertos.' : `Entran ${CP_FACTIONS[by].name}.`}`);
     cs.threat = null;
     return { done: true };
   }
   if (op.kind === 'trade') {
-    if (cs.supplies < 3) return { error: 'You need three supplies to trade.' };
+    if (cs.supplies < 3) return { error: 'Para comerciar te hacen falta tres suministros.' };
     cs.supplies -= 3; cs.rep.enclave += 1; cs.traded = true;
-    cp_log(cs, `You trade with ${CP_FACTIONS.enclave.name}. They remember it.`);
+    cp_log(cs, `Comerciaste con ${CP_FACTIONS.enclave.name}. No se lo olvidan.`);
     cp_check_alliance(cs);
     return { done: true };
   }
   if (op.kind === 'rest') {
     cs.recruits += 2;
-    cp_log(cs, 'A day without fighting. The wounded are on their feet again.');
+    cp_log(cs, 'Un día sin tiros. Los heridos ya están de pie.');
     cp_end_day(cs);
     return { done: true };
   }
-  if (!cs.company.some((q) => q.men > 0)) return { error: 'You have nobody to send. Raise a squad first.' };
+  if (!cs.company.some((q) => q.men > 0)) return { error: 'No tenés a quién mandar. Armá una escuadra primero.' };
   cs.op = Object.assign({}, op);
   const cfg = cp_battle_cfg(cs, op);
   cs.op.cfg = cfg;
@@ -223,34 +270,34 @@ function cp_finish_battle(cs, b) {
       q.men = s.men.length;
     }
   }
-  for (const q of cs.company.filter((x) => x.men <= 0)) cp_log(cs, `${q.name} is gone. Nobody came back.`);
+  for (const q of cs.company.filter((x) => x.men <= 0)) cp_log(cs, `${q.name} ya no existe. No volvió nadie.`);
   cs.company = cs.company.filter((q) => q.men > 0);
   const f = op.by && CP_FACTIONS[op.by];
   if (op.kind === 'clear') {
-    if (won) { z.owner = 'you'; z.dead = 0; cp_log(cs, `${name} is yours.${z.cache ? ' The police armoury had ammunition: eight supplies.' : ''}`); if (z.cache) { cs.supplies += 8; z.cache = false; } }
-    else { z.dead = Math.min(3, z.dead + 1); cp_log(cs, `You fall back from ${name}. All that noise drew more of them in.`); }
+    if (won) { z.owner = 'you'; z.dead = 0; cp_log(cs, `${name} es tuya.${z.cache ? ' En el arsenal de la policía había munición: ocho suministros.' : ''}`); if (z.cache) { cs.supplies += 8; z.cache = false; } }
+    else { z.dead = Math.min(3, z.dead + 1); cp_log(cs, `Te replegaste de ${name}. Con tanto ruido vinieron más.`); }
   } else if (op.kind === 'assault') {
     if (won) {
       z.owner = 'you'; z.dead = Math.max(0, z.dead - 1); cs.truce[op.by] = Math.max(cs.truce[op.by], cs.day + 2);
-      cp_log(cs, `${name} is yours. ${f.name} fall back to lick their wounds.`);
-      if (!cp_held_by(cs, op.by).length) cp_log(cs, `${f.name} are finished: they hold nothing any more.`);
+      cp_log(cs, `${name} es tuya. ${f.name} se repliegan a lamerse las heridas.`);
+      if (!cp_held_by(cs, op.by).length) cp_log(cs, `${f.name} están liquidados: ya no tienen nada.`);
     } else {
-      cp_log(cs, `The assault on ${name} failed.`);
+      cp_log(cs, `El ataque a ${name} fracasó.`);
       const target = cp_mine(cs).find((id) => CP_ZONES[id].adj.includes(op.zone));
-      if (target && !cs.threat && cp_rand(cs) < 0.5) { cs.threat = { zone: target, by: op.by }; cp_log(cs, `${f.name} smell weakness: they are coming for ${CP_ZONES[target].name}.`); }
+      if (target && !cs.threat && cp_rand(cs) < 0.5) { cs.threat = { zone: target, by: op.by }; cp_log(cs, `${f.name} olieron la debilidad: van por ${CP_ZONES[target].name}.`); }
     }
   } else if (op.kind === 'defend') {
     cs.threat = null;
     if (op.by !== 'dead') cs.truce[op.by] = Math.max(cs.truce[op.by], cs.day + 2);    // win or lose, they need days to come again
-    if (won) cp_log(cs, `${name} held.`);
+    if (won) cp_log(cs, `${name} aguantó.`);
     else {
       z.owner = op.by === 'dead' ? null : op.by; if (op.by === 'dead') z.dead = 3;
-      cp_log(cs, `${name} is lost${op.by === 'dead' ? ' to the dead' : ` to ${f.name}`}.`);
+      cp_log(cs, `Perdiste ${name}${op.by === 'dead' ? ': ahora es de los muertos' : ` a manos de ${f.name}`}.`);
     }
   } else if (op.kind === 'rescue') {
     const n = b ? b.saved || 0 : 0;
     cs.recruits += n; z.survivors = 0;
-    cp_log(cs, n ? `${n} people brought out of ${name}. They want to fight.` : `Nobody came out of ${name} alive.`);
+    cp_log(cs, n ? `Sacaste a ${n} de ${name}. Quieren pelear.` : `De ${name} no salió nadie con vida.`);
     if (won) { cs.rep.enclave += 1; cp_check_alliance(cs); }
   }
   if (won) cs.supplies += 2;                                              // what the winners pick up
@@ -262,7 +309,7 @@ function cp_check_alliance(cs) {
   const home = cp_held_by(cs, 'enclave');
   if (cs.rep.enclave >= 4 && home.length) {
     for (const id of home) cs.zones[id].owner = 'you';
-    cp_log(cs, `${CP_FACTIONS.enclave.name} throw in their lot with you. ${home.map((id) => CP_ZONES[id].name).join(', ')} is yours.`);
+    cp_log(cs, `${CP_FACTIONS.enclave.name} se juegan con vos. ${home.map((id) => CP_ZONES[id].name).join(', ')} es tuyo.`);
   }
 }
 
@@ -272,7 +319,7 @@ function cp_end_day(cs) {
   if (cs.threat) {
     const t = cs.threat, z = cs.zones[t.zone];
     z.owner = t.by === 'dead' ? null : t.by; if (t.by === 'dead') z.dead = 3;
-    cp_log(cs, `Nobody stood for ${CP_ZONES[t.zone].name}. ${t.by === 'dead' ? 'The dead have it.' : `${CP_FACTIONS[t.by].name} took it.`}`);
+    cp_log(cs, `Nadie salió a defender ${CP_ZONES[t.zone].name}. ${t.by === 'dead' ? 'Ahora es de los muertos.' : `Se la quedaron ${CP_FACTIONS[t.by].name}.`}`);
     cs.threat = null;
   }
   if (cp_check_over(cs)) return;
@@ -288,7 +335,7 @@ function cp_end_day(cs) {
     if (!next.length) continue;
     const n = cp_pick(cs, next), nz = cs.zones[n];
     nz.dead++;
-    if (nz.dead >= 3 && nz.owner && nz.owner !== 'you' && cp_rand(cs) < 0.35) { cp_log(cs, `The dead overran ${CP_ZONES[n].name}. ${CP_FACTIONS[nz.owner].name} lost it.`); nz.owner = null; }
+    if (nz.dead >= 3 && nz.owner && nz.owner !== 'you' && cp_rand(cs) < 0.35) { cp_log(cs, `Los muertos arrasaron ${CP_ZONES[n].name}. ${CP_FACTIONS[nz.owner].name} la perdieron.`); nz.owner = null; }
   }
   // the factions keep their own streets clean, more or less
   for (const id of Object.keys(cs.zones)) { const z = cs.zones[id]; if (z.owner && z.owner !== 'you' && z.dead > 0 && cp_rand(cs) < 0.5) z.dead--; }
@@ -302,11 +349,11 @@ function cp_end_day(cs) {
     if (yours.length && !cs.threat && cs.truce[f] < cs.day + 1 && (cp_rand(cs) < 0.35 || !open.length)) {
       const t = cp_pick(cs, yours);
       cs.threat = { zone: t, by: f };
-      cp_log(cs, `${CP_FACTIONS[f].name} are massing to take ${CP_ZONES[t].name}. Defend it tomorrow, or lose it.${t === 'florida' ? ' Florida is home: if it falls, it is over.' : ''}`);
+      cp_log(cs, `${CP_FACTIONS[f].name} se están juntando para quedarse con ${CP_ZONES[t].name}. Defendela mañana, o la perdés.${t === 'florida' ? ' Florida es tu casa: si cae, se terminó.' : ''}`);
     } else if (open.length) {
       const t = cp_pick(cs, open);
       cs.zones[t].owner = f;
-      cp_log(cs, `${CP_FACTIONS[f].name} moved into ${CP_ZONES[t].name}.`);
+      cp_log(cs, `${CP_FACTIONS[f].name} se metieron en ${CP_ZONES[t].name}.`);
     }
   }
   // a horde building up next door
@@ -315,7 +362,7 @@ function cp_end_day(cs) {
     if (exposed.length && cp_rand(cs) < 0.3) {
       const t = cp_pick(cs, exposed);
       cs.threat = { zone: t, by: 'dead' };
-      cp_log(cs, `A horde is gathering on the edge of ${CP_ZONES[t].name}. It will come tomorrow night.`);
+      cp_log(cs, `Se está juntando una horda en el borde de ${CP_ZONES[t].name}. Mañana a la noche viene.`);
     }
   }
   cs.day++; cs.traded = false;
@@ -327,102 +374,102 @@ function cp_end_day(cs) {
 function cp_check_over(cs) {
   if (cs.over) return true;
   const mine = cp_mine(cs).length, hostiles = CP.HOSTILE.filter((f) => cp_held_by(cs, f).length);
-  if (cs.zones.florida.owner !== 'you') cs.over = { victory: false, title: 'Florida has fallen', text: 'The school gym, the station, the people who trusted you. Without Florida there is nothing to come back to.' };
-  else if (!cs.company.some((q) => q.men > 0) && cs.recruits < 4) cs.over = { victory: false, title: 'Nobody left', text: 'The company is gone, and there is nobody left to raise another.' };
-  else if (mine >= CP.WIN_ZONES) cs.over = { victory: true, title: 'Zona Norte', text: `${mine} districts answer to you, from the river to the Panamericana. It is not the world it was, but it is yours.` };
-  else if (!hostiles.length) cs.over = { victory: true, title: 'Nobody left to fight', text: 'The Reapers, the Task Force and the Reborn are gone. What is left is you, the river and the dead.' };
+  if (cs.zones.florida.owner !== 'you') cs.over = { victory: false, title: 'Cayó Florida', text: 'El gimnasio, la estación, la gente que confió en vos. Sin Florida no hay adónde volver.' };
+  else if (!cs.company.some((q) => q.men > 0) && cs.recruits < 4) cs.over = { victory: false, title: 'No queda nadie', text: 'La compañía ya no existe, y no hay gente para armar otra.' };
+  else if (mine >= CP.WIN_ZONES) cs.over = { victory: true, title: 'Zona Norte', text: `${mine} barrios te responden, del río a la Panamericana. No es el mundo que era, pero es tuyo.` };
+  else if (!hostiles.length) cs.over = { victory: true, title: 'No queda contra quién pelear', text: 'Los Segadores, los Milicos y los Renacidos ya no están. Quedan vos, el río y los muertos.' };
   if (cs.over) cs.over.summary = cp_summary(cs);
   return !!cs.over;
 }
 function cp_summary(cs) {
-  return [`Day ${cs.day}. Districts held: ${cp_mine(cs).length} of ${Object.keys(cs.zones).length}.`,
-    `Battles: ${cs.stats.battles}, won ${cs.stats.won}. The dead destroyed: ${cs.stats.kills}.`,
-    `Your dead: ${cs.stats.lost}. People brought out: ${cs.stats.saved}.`,
-    'Company: ' + (cs.company.length ? cs.company.map((q) => `${q.name} (${q.men})`).join(', ') : 'none') + '.'];
+  return [`Día ${cs.day}. Barrios propios: ${cp_mine(cs).length} de ${Object.keys(cs.zones).length}.`,
+    `Batallas: ${cs.stats.battles}, ganadas ${cs.stats.won}. Muertos que volviste a matar: ${cs.stats.kills}.`,
+    `Tus caídos: ${cs.stats.lost}. Gente rescatada: ${cs.stats.saved}.`,
+    'Compañía: ' + (cs.company.length ? cs.company.map((q) => `${q.name} (${q.men})`).join(', ') : 'ninguna') + '.'];
 }
 
 // ---------------------------------------------------------------- encounters: decisions that move the map
 // Each returns its data when it can happen now (or null), a text, and choices; a choice changes the state and says what happened.
 const CP_EVENTS = [
   { id: 'refugees', when: (cs) => ({}),
-    text: () => 'A crowd walked up the Mitre tracks from the city in the night. Forty people, children among them, and nobody has checked them for bites.',
+    text: () => 'A la noche llegó caminando por las vías del Mitre un grupo desde Capital. Cuarenta personas, con chicos, y nadie les revisó si tienen mordidas.',
     choices: (cs) => [
-      { label: 'Take them in', sub: '+4 recruits, -2 supplies. Some of them may be bitten.', go: (cs) => {
+      { label: 'Recibirlos', sub: '+4 reclutas, -2 suministros. Alguno puede venir mordido.', go: (cs) => {
         cs.recruits += 4; cs.supplies = Math.max(0, cs.supplies - 2);
         if (cp_rand(cs) < 0.35) {
           const id = cp_pick(cs, cp_mine(cs)); cs.zones[id].dead = Math.min(3, cs.zones[id].dead + 1);
           if (!cs.threat && cs.zones[id].dead >= 2) cs.threat = { zone: id, by: 'dead' };
-          return `One of them was bitten, and turned in ${CP_ZONES[id].name}.${cs.threat && cs.threat.zone === id ? ' The dead are loose there: it must be held.' : ''}`;
+          return `Uno venía mordido, y se dio vuelta en ${CP_ZONES[id].name}.${cs.threat && cs.threat.zone === id ? ' Hay muertos sueltos ahí: hay que aguantarla.' : ''}`;
         }
-        return 'They are checked, fed and given work. Nobody turned.';
+        return 'Los revisan, les dan de comer y les dan laburo. No se dio vuelta nadie.';
       } },
-      cp_held_by(cs, 'enclave').length ? { label: `Send them on to ${CP_FACTIONS.enclave.name}`, sub: 'Their goodwill rises.', go: (cs) => { cs.rep.enclave++; cp_check_alliance(cs); return `${CP_FACTIONS.enclave.name} take them in, and remember who sent them.`; } } : null,
-      { label: 'Turn them away', sub: 'Nothing gained, nothing risked.', go: (cs) => { if (cs.rep.enclave > 0) cs.rep.enclave--; return 'They walk on north. Word of it gets around.'; } },
+      cp_held_by(cs, 'enclave').length ? { label: `Mandarlos con ${CP_FACTIONS.enclave.name}`, sub: 'Sube su buena voluntad.', go: (cs) => { cs.rep.enclave++; cp_check_alliance(cs); return `${CP_FACTIONS.enclave.name} los reciben, y se acuerdan de quién se los mandó.`; } } : null,
+      { label: 'Rechazarlos', sub: 'No ganás nada, no arriesgás nada.', go: (cs) => { if (cs.rep.enclave > 0) cs.rep.enclave--; return 'Siguen caminando para el norte. Se corre la voz.'; } },
     ] },
   { id: 'truce', when: (cs) => { const z = cp_mine(cs).filter((id) => id !== 'florida' && cp_borders(cs, id, 'military')); return z.length && cs.truce.military < cs.day ? { zone: z[0] } : null; },
-    text: (cs, d) => `A Task Force officer walks up under a white flag. Hand over ${CP_ZONES[d.zone].name} and they leave you alone for a week, with a crate of ammunition thrown in.`,
+    text: (cs, d) => `Se acerca un oficial con bandera blanca. Si les entregás ${CP_ZONES[d.zone].name}, te dejan tranquilo una semana, y encima te tiran un cajón de munición.`,
     choices: (cs, d) => [
-      { label: `Give them ${CP_ZONES[d.zone].name}`, sub: '+6 supplies and a week of peace with them. The district is theirs.', go: (cs) => { cs.zones[d.zone].owner = 'military'; cs.supplies += 6; cs.truce.military = cs.day + 7; return `${CP_ZONES[d.zone].name} is theirs now. The crate is real.`; } },
-      { label: 'Refuse', sub: 'They will come for it.', go: (cs) => { if (!cs.threat) cs.threat = { zone: d.zone, by: 'military' }; return `The officer salutes and leaves. ${CP_FACTIONS.military.name} are coming for ${CP_ZONES[d.zone].name}.`; } },
+      { label: `Entregarles ${CP_ZONES[d.zone].name}`, sub: '+6 suministros y una semana de paz con ellos. El barrio pasa a ser de ellos.', go: (cs) => { cs.zones[d.zone].owner = 'military'; cs.supplies += 6; cs.truce.military = cs.day + 7; return `${CP_ZONES[d.zone].name} ahora es de ellos. El cajón es de verdad.`; } },
+      { label: 'Negarte', sub: 'Van a ir a buscarla.', go: (cs) => { if (!cs.threat) cs.threat = { zone: d.zone, by: 'military' }; return `El oficial hace la venia y se va. ${CP_FACTIONS.military.name} van por ${CP_ZONES[d.zone].name}.`; } },
     ] },
   { id: 'toll', when: (cs) => { const z = cp_mine(cs).filter((id) => cp_borders(cs, id, 'raiders')); return z.length && cs.truce.raiders < cs.day ? { zone: cp_pick(cs, z) } : null; },
-    text: () => 'The Reapers have chained the Panamericana and sent a kid with a note: four supplies a week, or they come and take them.',
+    text: () => 'Los Segadores pusieron una cadena en la Panamericana y mandaron a un pibe con una nota: cuatro suministros por semana, o vienen a buscarlos.',
     choices: () => [
-      { label: 'Pay the toll', sub: '-4 supplies, four quiet days with them.', go: (cs) => { if (cs.supplies < 4) return 'You do not have it. They take that as a no.'; cs.supplies -= 4; cs.truce.raiders = cs.day + 4; return 'You pay. The chain comes down for a while.'; } },
-      { label: 'Send the kid back with nothing', sub: 'They will come.', go: (cs, d) => { if (!cs.threat) cs.threat = { zone: d.zone, by: 'raiders' }; return `The Reapers are coming for ${CP_ZONES[d.zone].name}.`; } },
+      { label: 'Pagar el peaje', sub: '-4 suministros, cuatro días tranquilos con ellos.', go: (cs) => { if (cs.supplies < 4) return 'No te alcanza. Lo toman como un no.'; cs.supplies -= 4; cs.truce.raiders = cs.day + 4; return 'Pagás. La cadena baja por un tiempo.'; } },
+      { label: 'Mandar al pibe de vuelta con las manos vacías', sub: 'Van a venir.', go: (cs, d) => { if (!cs.threat) cs.threat = { zone: d.zone, by: 'raiders' }; return `Los Segadores van por ${CP_ZONES[d.zone].name}.`; } },
     ] },
   { id: 'preachers', when: (cs) => (cp_held_by(cs, 'cult').length ? { zone: cp_pick(cs, cp_mine(cs)) } : null),
-    text: (cs, d) => `Preachers of the Reborn are in ${CP_ZONES[d.zone].name}, telling people the bitten should be welcomed, not shot.`,
+    text: (cs, d) => `Hay predicadores de los Renacidos en ${CP_ZONES[d.zone].name}, diciendo que a los mordidos hay que recibirlos, no matarlos.`,
     choices: () => [
-      { label: 'Run them out', sub: 'The Reborn will not forgive it.', go: (cs, d) => { const t = cp_mine(cs).find((id) => cp_borders(cs, id, 'cult')); if (t && !cs.threat) { cs.threat = { zone: t, by: 'cult' }; return `They go, and the Reborn march on ${CP_ZONES[t].name}.`; } return 'They go, cursing you.'; } },
-      { label: 'Let them talk', sub: 'Peace with the Reborn for five days. Some people listen.', go: (cs, d) => { cs.truce.cult = cs.day + 5; cs.zones[d.zone].dead = Math.min(3, cs.zones[d.zone].dead + 1); cs.recruits = Math.max(0, cs.recruits - 1); return `Some listen. A family in ${CP_ZONES[d.zone].name} hides a bitten son. One of your recruits leaves with the preachers.`; } },
+      { label: 'Echarlos', sub: 'Los Renacidos no lo van a perdonar.', go: (cs, d) => { const t = cp_mine(cs).find((id) => cp_borders(cs, id, 'cult')); if (t && !cs.threat) { cs.threat = { zone: t, by: 'cult' }; return `Se van, y los Renacidos marchan sobre ${CP_ZONES[t].name}.`; } return 'Se van, maldiciéndote.'; } },
+      { label: 'Dejarlos hablar', sub: 'Cinco días de paz con los Renacidos. Algunos los escuchan.', go: (cs, d) => { cs.truce.cult = cs.day + 5; cs.zones[d.zone].dead = Math.min(3, cs.zones[d.zone].dead + 1); cs.recruits = Math.max(0, cs.recruits - 1); return `Algunos escuchan. Una familia de ${CP_ZONES[d.zone].name} esconde a un hijo mordido. Uno de tus reclutas se va con los predicadores.`; } },
     ] },
   { id: 'medicine', when: (cs) => (cp_held_by(cs, 'enclave').length ? {} : null),
-    text: () => 'The Unicenter folk have a fever ward and no antibiotics. They ask for three supplies\' worth.',
+    text: () => 'Los del Unicenter tienen una sala con fiebre y no les quedan antibióticos. Te piden el equivalente a tres suministros.',
     choices: () => [
-      { label: 'Give it', sub: '-3 supplies; they will not forget.', go: (cs) => { if (cs.supplies < 3) return 'You do not have it to give.'; cs.supplies -= 3; cs.rep.enclave += 2; cp_check_alliance(cs); return 'The fever breaks in the ward.'; } },
-      { label: 'Refuse', sub: 'They will remember that too.', go: (cs) => { cs.rep.enclave = Math.max(0, cs.rep.enclave - 1); return 'They bury two people that week.'; } },
+      { label: 'Dárselos', sub: '-3 suministros; no se lo van a olvidar.', go: (cs) => { if (cs.supplies < 3) return 'No tenés para dar.'; cs.supplies -= 3; cs.rep.enclave += 2; cp_check_alliance(cs); return 'La fiebre baja en la sala.'; } },
+      { label: 'Negárselos', sub: 'De eso también se van a acordar.', go: (cs) => { cs.rep.enclave = Math.max(0, cs.rep.enclave - 1); return 'Esa semana entierran a dos.'; } },
     ] },
   { id: 'horde', when: (cs) => {
       if (cs.threat) return null;
       for (const id of cp_mine(cs)) for (const n of CP_ZONES[id].adj) if (cs.zones[n].dead >= 2 && cs.zones[n].owner !== 'you') return { zone: id, from: n, lure: CP_ZONES[n].adj.find((m) => cp_hostile(cs.zones[m].owner)) || null };
       return null; },
-    text: (cs, d) => `A horde is moving down Av. del Libertador out of ${CP_ZONES[d.from].name}, toward ${CP_ZONES[d.zone].name}.`,
+    text: (cs, d) => `Una horda baja por Av. del Libertador desde ${CP_ZONES[d.from].name}, para el lado de ${CP_ZONES[d.zone].name}.`,
     choices: (cs, d) => [
-      { label: `Meet it in ${CP_ZONES[d.zone].name}`, sub: 'A night defence tomorrow.', go: (cs) => { cs.threat = { zone: d.zone, by: 'dead' }; return `Everyone who can hold a weapon goes to ${CP_ZONES[d.zone].name}.`; } },
-      { label: 'Block the avenue', sub: '-4 supplies: cars, wire and a burning bus across Libertador. It breaks there.', go: (cs) => {
-        if (cs.supplies < 4) { cs.threat = { zone: d.zone, by: 'dead' }; return 'There is not enough to build with. The horde keeps coming.'; }
-        cs.supplies -= 4; cs.zones[d.from].dead = Math.max(1, cs.zones[d.from].dead - 1); return 'The horde breaks against the wreck on Libertador and scatters back north.';
+      { label: `Esperarla en ${CP_ZONES[d.zone].name}`, sub: 'Una defensa nocturna mañana.', go: (cs) => { cs.threat = { zone: d.zone, by: 'dead' }; return `Todo el que puede agarrar un arma va para ${CP_ZONES[d.zone].name}.`; } },
+      { label: 'Cortar la avenida', sub: '-4 suministros: autos, alambre y un bondi prendido fuego atravesado en Libertador. Ahí se frena.', go: (cs) => {
+        if (cs.supplies < 4) { cs.threat = { zone: d.zone, by: 'dead' }; return 'No hay con qué armarla. La horda sigue viniendo.'; }
+        cs.supplies -= 4; cs.zones[d.from].dead = Math.max(1, cs.zones[d.from].dead - 1); return 'La horda se estrella contra los fierros en Libertador y se desparrama para el norte.';
       } },
-      d.lure ? { label: `Lead it into ${CP_ZONES[d.lure].name}`, sub: `-2 supplies (flares, a car alarm, a brave driver). ${CP_FACTIONS[cs.zones[d.lure].owner].name} get the horde.`, go: (cs) => {
-        if (cs.supplies < 2) { cs.threat = { zone: d.zone, by: 'dead' }; return 'Without supplies there is no lure. The horde keeps coming.'; }
+      d.lure ? { label: `Llevarla a ${CP_ZONES[d.lure].name}`, sub: `-2 suministros (bengalas, una alarma de auto y un loco al volante). La horda les cae a ${CP_FACTIONS[cs.zones[d.lure].owner].name}.`, go: (cs) => {
+        if (cs.supplies < 2) { cs.threat = { zone: d.zone, by: 'dead' }; return 'Sin suministros no hay señuelo. La horda sigue viniendo.'; }
         cs.supplies -= 2; const lz = cs.zones[d.lure], owner = lz.owner; lz.dead = Math.min(3, lz.dead + 2);
-        if (lz.dead >= 3) { lz.owner = null; return `The horde turns into ${CP_ZONES[d.lure].name} and stays. ${CP_FACTIONS[owner].name} lost it.`; }
-        return `The horde turns into ${CP_ZONES[d.lure].name}. ${CP_FACTIONS[owner].name} are busy for a while.`;
+        if (lz.dead >= 3) { lz.owner = null; return `La horda dobla para ${CP_ZONES[d.lure].name} y se queda. ${CP_FACTIONS[owner].name} la perdieron.`; }
+        return `La horda dobla para ${CP_ZONES[d.lure].name}. ${CP_FACTIONS[owner].name} van a estar ocupados un rato.`;
       } } : null,
-      d.zone !== 'florida' ? { label: `Evacuate ${CP_ZONES[d.zone].name}`, sub: 'Lose the district; keep everyone.', go: (cs) => { cs.zones[d.zone].owner = null; cs.zones[d.zone].dead = 3; return `${CP_ZONES[d.zone].name} is left to the horde.`; } } : null,
+      d.zone !== 'florida' ? { label: `Evacuar ${CP_ZONES[d.zone].name}`, sub: 'Perdés el barrio; no perdés a nadie.', go: (cs) => { cs.zones[d.zone].owner = null; cs.zones[d.zone].dead = 3; return `${CP_ZONES[d.zone].name} queda para la horda.`; } } : null,
     ] },
   { id: 'signal', when: (cs) => { const z = cp_frontier(cs).filter((id) => cs.zones[id].survivors === 0 && cs.zones[id].dead >= 1); return z.length ? { zone: cp_pick(cs, z) } : null; },
-    text: (cs, d) => `A mirror flashes from a rooftop in ${CP_ZONES[d.zone].name}, three times, then three again. Somebody is alive in there.`,
+    text: (cs, d) => `Desde una terraza de ${CP_ZONES[d.zone].name} brilla un espejo, tres veces, y después tres más. Hay alguien vivo ahí.`,
     choices: () => [
-      { label: 'Mark it for a rescue', sub: 'A rescue there is possible for three days.', go: (cs, d) => { cs.zones[d.zone].survivors = 3; return `Rescue in ${CP_ZONES[d.zone].name} is on the map.`; } },
-      { label: 'There is no one to spare', sub: 'Nothing happens.', go: () => 'The mirror flashes for two more days, then stops.' },
+      { label: 'Marcarlo para un rescate', sub: 'Durante tres días se puede rescatar ahí.', go: (cs, d) => { cs.zones[d.zone].survivors = 3; return `El rescate en ${CP_ZONES[d.zone].name} está en el mapa.`; } },
+      { label: 'No hay a quién mandar', sub: 'No pasa nada.', go: () => 'El espejo brilla dos días más, y después para.' },
     ] },
   { id: 'deserters', when: (cs) => { const f = CP.HOSTILE.filter((x) => cp_held_by(cs, x).length); return f.length ? { by: cp_pick(cs, f) } : null; },
-    text: (cs, d) => `Three deserters from ${CP_FACTIONS[d.by].name} are at your barricade, armed, asking to join.`,
+    text: (cs, d) => `Tres desertores de ${CP_FACTIONS[d.by].name} están en tu barricada, armados, pidiendo sumarse.`,
     choices: () => [
-      { label: 'Take them', sub: '+3 recruits. Their old friends will want them back.', go: (cs, d) => {
+      { label: 'Sumarlos', sub: '+3 reclutas. Sus viejos amigos van a querer recuperarlos.', go: (cs, d) => {
         cs.recruits += 3; const t = cp_mine(cs).find((id) => cp_borders(cs, id, d.by));
-        if (t && !cs.threat) { cs.threat = { zone: t, by: d.by }; return `They are in. ${CP_FACTIONS[d.by].name} are coming to ${CP_ZONES[t].name} to collect them.`; }
-        return 'They are in.';
+        if (t && !cs.threat) { cs.threat = { zone: t, by: d.by }; return `Ya están adentro. ${CP_FACTIONS[d.by].name} vienen a ${CP_ZONES[t].name} a buscarlos.`; }
+        return 'Ya están adentro.';
       } },
-      { label: 'Send them away', sub: 'No trouble.', go: () => 'They go. Maybe somebody else takes them.' },
+      { label: 'Mandarlos a otro lado', sub: 'Sin problemas.', go: () => 'Se van. Capaz que los agarra otro.' },
     ] },
   { id: 'cache', when: (cs) => { const z = cp_frontier(cs).filter((id) => cs.zones[id].owner === null && !cs.zones[id].cache); return z.length ? { zone: cp_pick(cs, z) } : null; },
-    text: (cs, d) => `Someone swears there is a police armoury in ${CP_ZONES[d.zone].name}, untouched, under the dead.`,
+    text: (cs, d) => `Uno jura que en ${CP_ZONES[d.zone].name} hay un arsenal de la policía, intacto, debajo de los muertos.`,
     choices: () => [
-      { label: 'Mark it', sub: 'Clearing the district brings eight supplies.', go: (cs, d) => { cs.zones[d.zone].cache = true; return `The armoury in ${CP_ZONES[d.zone].name} is on the map.`; } },
-      { label: 'Rumours', sub: 'Nothing.', go: () => 'You have heard that story before.' },
+      { label: 'Marcarlo', sub: 'Limpiar el barrio te da ocho suministros.', go: (cs, d) => { cs.zones[d.zone].cache = true; return `El arsenal de ${CP_ZONES[d.zone].name} está en el mapa.`; } },
+      { label: 'Son versiones', sub: 'Nada.', go: () => 'Esa historia ya la escuchaste.' },
     ] },
 ];
 

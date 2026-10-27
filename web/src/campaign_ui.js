@@ -14,7 +14,7 @@ function el(tag, cls, content) {
 const btn = (cls, label, onclick) => { const b = el('button', cls, label); b.type = 'button'; if (onclick) b.addEventListener('click', onclick); return b; };
 const SVG = 'http://www.w3.org/2000/svg';
 const svg = (tag, attrs) => { const e = document.createElementNS(SVG, tag); for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v); return e; };
-const DEAD_WORDS = ['clear', 'a few dead', 'many dead', 'overrun'];
+const DEAD_WORDS = ['limpio', 'algunos muertos', 'muchos muertos', 'tomado por los muertos'];
 
 let cs = null, sel = 'florida', setupCfg = null;
 
@@ -26,8 +26,8 @@ function setup() {
   const render = () => {
     s.innerHTML = '';
     const w = el('div', 'wrap form'), head = el('h2', 'logo', 'Zona Norte'); head.style.fontSize = '40px';
-    w.append(el('div', 'fileno', 'Campaign · northern Buenos Aires · 2026'), head);
-    w.append(el('p', 'note', 'You hold Florida, in Vicente López: a school gym, a supermarket, the station. Take the north district by district, from the river to the Panamericana. Every day, one operation; every night the map moves, and something happens that asks you to decide. Your company is the same in every battle: the dead stay dead.'));
+    w.append(el('div', 'fileno', 'Campaña · zona norte del Gran Buenos Aires · 2026'), head);
+    w.append(el('p', 'note', 'Tenés Florida, en Vicente López: el gimnasio de la escuela, el súper, la estación. Tomá la zona norte barrio por barrio, del río a la Panamericana. Cada día, una operación; cada noche el mapa se mueve, y pasa algo que te obliga a decidir. Tu compañía es la misma en todas las batallas: los muertos no vuelven.'));
     const group = (title, key, items, blurb, cols) => {
       w.append(el('h3', null, title));
       const box = el('div', 'opts' + (cols ? ' cols' : ''));
@@ -39,12 +39,12 @@ function setup() {
       w.append(box);
       if (blurb) w.append(el('div', 'blurb', blurb()));
     };
-    group('The dead', 'zombies', Object.values(CONTENT.presets).map((z) => [z.id, z.name.split(' - ')[0], z.inspired_by]), () => CONTENT.presets[setupCfg.zombies].blurb);
-    group('Difficulty', 'difficulty', ['easy', 'normal', 'hard'].map((d) => [d, d[0].toUpperCase() + d.slice(1), null]), () => ({ easy: 'Smaller enemy companies.', normal: 'As intended.', hard: 'Bigger enemy companies, more dead.' })[setupCfg.difficulty], true);
-    w.append(el('h3', null, 'Who else is out there'), el('div', 'blurb', ['raiders', 'military', 'cult', 'enclave'].map((f) => el('div', null, [el('b', null, CP_FACTIONS[f].name + ': '), CP_FACTIONS[f].blurb]))));
+    group('Los muertos', 'zombies', Object.values(CONTENT.presets).map((z) => [z.id, z.name.split(' - ')[0], z.inspired_by]), () => CONTENT.presets[setupCfg.zombies].blurb);
+    group('Dificultad', 'difficulty', [['easy', 'Fácil'], ['normal', 'Normal'], ['hard', 'Difícil']].map(([d, n]) => [d, n, null]), () => ({ easy: 'Compañías enemigas más chicas.', normal: 'Como está pensado.', hard: 'Compañías enemigas más grandes, más muertos.' })[setupCfg.difficulty], true);
+    w.append(el('h3', null, 'Quién más anda por ahí'), el('div', 'blurb', ['raiders', 'military', 'cult', 'enclave'].map((f) => el('div', null, [el('b', null, CP_FACTIONS[f].name + ': '), CP_FACTIONS[f].blurb]))));
     const go = el('div', 'sticky');
-    go.append(btn('btn main', 'BEGIN', () => { UI.lsSet('outbreak.campaigncfg', Object.assign({}, setupCfg, { seed: null })); cs = cp_new(Object.assign({}, setupCfg)); sel = 'florida'; bt_delete_save(); cp_save(cs); show(); }));
-    w.append(go, btn('btn', 'Back', UI.showTitle));
+    go.append(btn('btn main', 'EMPEZAR', () => { UI.lsSet('outbreak.campaigncfg', Object.assign({}, setupCfg, { seed: null })); cs = cp_new(Object.assign({}, setupCfg)); sel = 'florida'; bt_delete_save(); cp_save(cs); show(); }));
+    w.append(go, btn('btn', 'Volver', UI.showTitle));
     s.append(w); s.scrollTop = 0;
   };
   render();
@@ -79,9 +79,9 @@ function show(afterBattle) {
   if (cs.over) { showOver(); return; }
   const mine = cp_mine(cs).length;
   s.append(el('div', 'cp-top', [
-    el('div', 'cp-stat', [el('b', null, `Day ${cs.day}`), ` · ${mine}/${Object.keys(cs.zones).length} districts · `, el('b', null, `${cs.supplies}`), ' supplies · ', el('b', null, `${cs.recruits}`), ' recruits']),
-    btn('bt-menu', 'Menu', menu)]));
-  if (cs.threat) s.append(el('div', 'cp-threat', `${cs.threat.by === 'dead' ? 'A horde' : CP_FACTIONS[cs.threat.by].name} ${cs.threat.by === 'dead' ? 'is coming for' : 'are coming for'} ${CP_ZONES[cs.threat.zone].name}. Defend it today, or lose it tonight.`));
+    el('div', 'cp-stat', [el('b', null, `Día ${cs.day}`), ` · ${mine}/${Object.keys(cs.zones).length} barrios · `, el('b', null, `${cs.supplies}`), ' suministros · ', el('b', null, `${cs.recruits}`), ' reclutas']),
+    btn('bt-menu', 'Menú', menu)]));
+  if (cs.threat) s.append(el('div', 'cp-threat', `${cs.threat.by === 'dead' ? 'Una horda viene' : `${CP_FACTIONS[cs.threat.by].name} vienen`} por ${CP_ZONES[cs.threat.zone].name}. Defendela hoy, o la perdés esta noche.`));
   const mapBox = el('div', 'cp-map'); mapBox.append(drawMap()); s.append(mapBox);
   const panel = el('div', 'cp-panel'); s.append(panel);
   renderPanel(panel);
@@ -122,15 +122,15 @@ function drawMap() {
 
 function renderPanel(p) {
   const z = CP_ZONES[sel], st = cs.zones[sel], owner = st.owner;
-  const who = owner ? CP_FACTIONS[owner].name : 'Nobody';
+  const who = owner ? CP_FACTIONS[owner].name : 'De nadie';
   p.append(el('div', 'cp-zone', [el('b', null, z.name), el('span', 'cp-sub', ` · ${z.partido} · ${who} · ${DEAD_WORDS[st.dead]}`)]));
   const notes = [];
   if (z.feature) notes.push(CP_FEATURES[z.feature]);
   if (owner && owner !== 'you' && CP_FACTIONS[owner].blurb) notes.push(CP_FACTIONS[owner].blurb);
-  if (owner === 'enclave') notes.push(`Their goodwill: ${cs.rep.enclave}/4. At four they join you.`);
-  if (CP.HOSTILE.includes(owner) && cs.truce[owner] >= cs.day) notes.push(`At peace with you until day ${cs.truce[owner] + 1}.`);
-  if (st.survivors > 0) notes.push(`Survivors signalling from here: ${st.survivors} day${st.survivors > 1 ? 's' : ''} left to reach them.`);
-  if (st.cache) notes.push('A police armoury is somewhere in here.');
+  if (owner === 'enclave') notes.push(`Su buena voluntad: ${cs.rep.enclave}/4. Con cuatro, se suman a vos.`);
+  if (CP.HOSTILE.includes(owner) && cs.truce[owner] >= cs.day) notes.push(`En paz con vos hasta el día ${cs.truce[owner] + 1}.`);
+  if (st.survivors > 0) notes.push(`Hay sobrevivientes haciendo señas: ${st.survivors === 1 ? 'queda un día' : `quedan ${st.survivors} días`} para llegar.`);
+  if (st.cache) notes.push('Por acá hay un arsenal de la policía.');
   if (notes.length) p.append(el('div', 'cp-notes', notes.map((n) => el('div', null, n))));
   // what can be done here today, and what can be done anywhere
   const ops = cp_ops(cs), here = ops.filter((o) => o.zone === sel), always = ops.filter((o) => !o.zone);
@@ -141,15 +141,15 @@ function renderPanel(p) {
     b.addEventListener('click', () => choose(op));
     box.append(b);
   }
-  if (!here.length && sel !== 'florida' && !cp_frontier(cs).includes(sel) && owner !== 'you') box.prepend(el('p', 'note', 'Too far: you can only act on districts next to yours.'));
+  if (!here.length && sel !== 'florida' && !cp_frontier(cs).includes(sel) && owner !== 'you') box.prepend(el('p', 'note', 'Queda lejos: solo podés operar en barrios pegados a los tuyos.'));
   p.append(box);
   // the company
-  p.append(el('h3', 'sec', 'Company'));
+  p.append(el('h3', 'sec', 'Compañía'));
   const comp = el('div', 'cp-company');
-  for (const q of cs.company) comp.append(el('div', 'cp-squad', [el('b', null, q.call), el('small', null, `${BT_ERAS.modern.names[q.type]} · ${q.men}/${cp_squad_max(q)}`)]));
-  p.append(comp, btn('btn', 'Refit: recruits and new squads', refit));
+  for (const q of cs.company) comp.append(el('div', 'cp-squad', [el('b', null, q.call), el('small', null, `${CP_TYPES[q.type]} · ${q.men}/${cp_squad_max(q)}`)]));
+  p.append(comp, btn('btn', 'Reorganizar: reclutas y escuadras nuevas', refit));
   // the latest news
-  p.append(el('h3', 'sec', 'News'), el('div', 'bt-feed', cs.log.slice(-6).reverse().map((l) => el('div', null, `Day ${l.day}: ${l.text}`))));
+  p.append(el('h3', 'sec', 'Novedades'), el('div', 'bt-feed', cs.log.slice(-6).reverse().map((l) => el('div', null, `Día ${l.day}: ${l.text}`))));
 }
 
 function choose(op) {
@@ -177,22 +177,22 @@ function refit() {
   overlay((box, close) => {
     const render = () => {
       box.innerHTML = '';
-      box.append(el('h2', 'end-title', 'Refit'), el('p', 'note', `${cs.recruits} recruits, ${cs.supplies} supplies. A recruit fills one place in a squad. A new squad needs a recruit for every man and supplies for their weapons.`));
+      box.append(el('h2', 'end-title', 'Reorganizar'), el('p', 'note', `${cs.recruits} reclutas, ${cs.supplies} suministros. Cada recluta llena un lugar en una escuadra. Una escuadra nueva necesita un recluta por hombre y suministros para las armas.`));
       for (const q of cs.company) {
         const need = cp_squad_max(q) - q.men;
-        const row = el('div', 'row', [el('div', 'main', [el('div', 'name', q.name), el('div', 'sub', `${q.men}/${cp_squad_max(q)} men`)])]);
-        if (need > 0) row.append(btn('btn', `Fill (${Math.min(need, cs.recruits)})`, () => { const e = cp_refill(cs, q.id); if (e) toast(e); cp_save(cs); render(); }));
+        const row = el('div', 'row', [el('div', 'main', [el('div', 'name', q.name), el('div', 'sub', `${q.men}/${cp_squad_max(q)} hombres`)])]);
+        if (need > 0) row.append(btn('btn', `Completar (${Math.min(need, cs.recruits)})`, () => { const e = cp_refill(cs, q.id); if (e) toast(e); cp_save(cs); render(); }));
         box.append(row);
       }
-      box.append(el('h3', 'sec', 'Raise a squad'));
+      box.append(el('h3', 'sec', 'Armar una escuadra'));
       const grid = el('div', 'opts cols');
       for (const t of Object.keys(BT_TYPES)) {
         const c = cp_raise_cost(t);
-        const o = el('button', 'opt', [el('b', null, BT_ERAS.modern.names[t]), el('small', null, `${c.recruits} recruits, ${c.supplies} supplies${t === 'heavy' ? ' · needs Campo de Mayo' : ''}`)]); o.type = 'button';
+        const o = el('button', 'opt', [el('b', null, CP_TYPES[t]), el('small', null, `${c.recruits} reclutas, ${c.supplies} suministros${t === 'heavy' ? ' · necesita Campo de Mayo' : ''}`)]); o.type = 'button';
         o.addEventListener('click', () => { const e = cp_raise(cs, t); if (e) toast(e); cp_save(cs); render(); });
         grid.append(o);
       }
-      box.append(grid, btn('btn main', 'Done', () => { close(); show(); }));
+      box.append(grid, btn('btn main', 'Listo', () => { close(); show(); }));
     };
     render();
   });
@@ -201,7 +201,7 @@ function refit() {
 function showEvent() {
   const v = cp_event_view(cs);
   overlay((box) => {
-    box.append(el('div', 'fileno', `Day ${cs.day}`), el('p', 'event-text story', v.text));
+    box.append(el('div', 'fileno', `Día ${cs.day}`), el('p', 'event-text story', v.text));
     v.choices.forEach((c, i) => {
       const b = el('button', 'choice', [el('b', null, c.label), el('small', null, c.sub)]); b.type = 'button';
       b.addEventListener('click', () => {
@@ -209,7 +209,7 @@ function showEvent() {
         if (cs.over) { cp_delete_save(); show(); return; }
         cp_save(cs);
         box.innerHTML = '';
-        box.append(el('p', 'event-text story', what), btn('btn main', 'Continue', () => show()));
+        box.append(el('p', 'event-text story', what), btn('btn main', 'Seguir', () => show()));
       });
       box.append(b);
     });
@@ -220,31 +220,32 @@ function showNight() {
   const night = cs.log.filter((l) => l.day >= cs.day - 1).slice(-6);
   if (!night.length) return;
   overlay((box, close) => {
-    box.append(el('div', 'fileno', `The night before day ${cs.day}`), el('div', 'sum', night.map((l) => el('div', null, l.text))), btn('btn main', 'Continue', close));
+    box.append(el('div', 'fileno', `La noche antes del día ${cs.day}`), el('div', 'sum', night.map((l) => el('div', null, l.text))), btn('btn main', 'Seguir', close));
   });
 }
 
 function showOver() {
   const s = $('#campaign'), o = cs.over;
   const w = el('div', 'wrap cp-over');
-  w.append(el('div', 'fileno', o.victory ? 'Campaign won' : 'Campaign lost'), el('h2', 'end-title ' + (o.victory ? 'win' : 'lose'), o.title), el('p', 'end-text', o.text), el('div', 'sum', o.summary.map((l) => el('div', null, l))));
+  w.append(el('div', 'fileno', o.victory ? 'Campaña ganada' : 'Campaña perdida'), el('h2', 'end-title ' + (o.victory ? 'win' : 'lose'), o.title), el('p', 'end-text', o.text), el('div', 'sum', o.summary.map((l) => el('div', null, l))));
   const m = el('div', 'menu'); m.style.marginTop = '20px';
-  m.append(btn('btn main', 'New campaign', setup), btn('btn', 'Title screen', () => { cs = null; UI.showTitle(); }));
+  m.append(btn('btn main', 'Nueva campaña', setup), btn('btn', 'Pantalla de inicio', () => { cs = null; UI.showTitle(); }));
   w.append(m); s.append(w);
 }
 
 function menu() {
   overlay((box, close) => {
     box.append(el('h2', 'end-title', 'Zona Norte'), el('div', 'sum', [
-      el('div', null, 'Each day: tap a district and choose an operation. Battles take the day; abandoning a district, trading and refitting do not.'),
-      el('div', null, 'Orange ring: next to yours, you can act there. Red dots: how many dead. Red pulse: under threat. ! : survivors signalling.'),
-      el('div', null, 'H hospital (+2 recruits a day), D depot (+3 supplies a day), A armoury (machine-gun teams). ★ Florida: lose it and it is over.'),
-      el('div', null, 'Every night your districts pay, the dead spread, the factions move. A threat nobody answers is a district lost.'),
-      el('div', null, 'Win with eight districts, or when the Reapers, the Task Force and the Reborn hold nothing.'),
+      el('div', null, 'Cada día: tocá un barrio y elegí una operación. Las batallas gastan el día; abandonar un barrio, comerciar y reorganizar, no.'),
+      el('div', null, 'Anillo naranja: pegado a lo tuyo, podés operar ahí. Puntos rojos: cuántos muertos hay. Pulso rojo: amenazado. ! : sobrevivientes haciendo señas.'),
+      el('div', null, 'H hospital (+2 reclutas por día), D depósito (+3 suministros por día), A arsenal (equipos de ametralladora). ★ Florida: si la perdés, se terminó.'),
+      el('div', null, 'Cada noche tus barrios producen, los muertos se expanden y las facciones se mueven. Una amenaza que nadie atiende es un barrio perdido.'),
+      el('div', null, 'Ganás con ocho barrios, o cuando los Segadores, los Milicos y los Renacidos se queden sin nada.'),
+      el('div', null, 'Las batallas se pelean en un plano de cada barrio. La pantalla de batalla está en inglés.'),
     ]));
     const m = el('div', 'menu');
-    m.append(btn('btn main', 'Back to the map', close), btn('btn', 'Save and quit', () => { cp_save(cs); cs = null; UI.showTitle(); }),
-      btn('btn danger', 'Abandon the campaign', () => { cp_delete_save(); cs = null; UI.showTitle(); }));
+    m.append(btn('btn main', 'Volver al mapa', close), btn('btn', 'Guardar y salir', () => { cp_save(cs); cs = null; UI.showTitle(); }),
+      btn('btn danger', 'Abandonar la campaña', () => { cp_delete_save(); cs = null; UI.showTitle(); }));
     box.append(m);
   });
 }

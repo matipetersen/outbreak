@@ -1554,9 +1554,9 @@ function showTitle() {
   if (has_save()) m.append(btn('btn main', 'Continue', () => {
     try { startGame(null, load_game()); } catch (e) { toast('That save could not be loaded'); delete_save(); showTitle(); }
   }));
-  if (cp_has_save()) m.append(btn('btn', 'Continue campaign', () => window.OB_CAMPAIGN.resume()));
+  if (cp_has_save()) m.append(btn('btn', 'Seguir la campaña', () => window.OB_CAMPAIGN.resume()));
   else if (bt_has_save()) m.append(btn('btn', 'Continue battle', () => window.OB_BATTLE.resume()));
-  m.append(btn('btn', 'New game', showNewGame), btn('btn', 'Battle', () => window.OB_BATTLE.setup()), btn('btn', 'Campaign: Zona Norte', () => window.OB_CAMPAIGN.setup()), btn('btn', 'Records', showRecords), btn('btn', 'How to play', () => openHelp()));
+  m.append(btn('btn', 'New game', showNewGame), btn('btn', 'Battle', () => window.OB_BATTLE.setup()), btn('btn', 'Campaña: Zona Norte', () => window.OB_CAMPAIGN.setup()), btn('btn', 'Records', showRecords), btn('btn', 'How to play', () => openHelp()));
   w.append(m);
   w.append(el('p', 'note', 'A zombie survival roguelike. Turn based, one run, one life.'));
   if (!lsSet('outbreak.probe', 1)) w.append(el('p', 'note t-warn', 'This browser blocks storage, so saving will not work here.'));
