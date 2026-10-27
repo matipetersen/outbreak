@@ -166,7 +166,7 @@ function renderPanel() {
     const pips = '●'.repeat(s.men.length) + '○'.repeat(Math.max(0, st.men - s.men.length));
     c.append(el('div', 'bt-cname', [el('span', 'bt-dot'), s.call || s.name]), el('div', 'bt-ctype', BT_ERAS[b.era].names[s.type]), el('div', 'bt-pips', pips),
       s.ammo_max ? bar(s.ammo / s.ammo_max, '#d99a2b') : el('div', 'bt-bar none'), bar(s.morale / 100, s.state === 'broken' ? '#e2573f' : s.state === 'shaken' ? '#d4a52a' : '#58b878'),
-      el('div', 'bt-cstate', `${stateWord(s)}${bt_settled(b, s) ? ' · hidden' : bt_sneaking(b, s) ? ' · sneaking' : ''}${s.path.length ? ' · moving' : ''}${s.ability ? ' · ' + s.ability.kind : ''}`));
+      el('div', 'bt-cstate', `${stateWord(s)}${bt_settled(b, s) ? ' · hidden' : bt_sneaking(b, s) ? ' · sneaking' : ''}${b.civs.some((q) => q.follow === s.id) ? ` · +${b.civs.filter((q) => q.follow === s.id).length} survivors` : ''}${s.path.length ? ' · moving' : ''}${s.ability ? ' · ' + s.ability.kind : ''}`));
     c.querySelector('.bt-dot').style.background = SQUAD_COL[i % SQUAD_COL.length];
     c.addEventListener('click', () => { if (playing) return; sel = s.id; mode = null; renderPanel(); });
     cards.append(c);
@@ -197,7 +197,9 @@ function renderPanel() {
     row2.append(btn('bt-seg', 'Stop', () => { bt_clear(b, s.id); mode = null; renderPanel(); }));
     p.append(row2);
     p.append(el('div', 'bt-hint', mode === 'face' ? 'Tap the side they should watch. Fire from behind them hurts most; when they are on the move, they turn when they arrive.' : mode === 'ability' ? (kind === 'lure' ? 'Tap where the lure should go (within 10 tiles). The dead go to the noise for two turns.' : 'Tap a tile within 3 tiles of where the squad stops. They need 4 quiet seconds there to build it.')
-      : s.state === 'broken' ? 'Broken: they run for safety and ignore orders until they rally.'
+      : s.state === 'broken' ? 'Broken: they run for safety and ignore orders until they rally. Anyone following them is left behind.'
+      : b.civs.some((q) => q.follow === s.id) ? `${b.civs.filter((q) => q.follow === s.id).length} survivors follow this squad. Lead them into the green EXIT strip at the bottom; near it they run the last stretch themselves.`
+      : b.objective === 'rescue' && b.civs.some((q) => q.follow === null) ? `${cap(era.weapons[s.type])}. Send a squad to the door of the house marked SURVIVORS: they come out and follow it.`
       : `${cap(era.weapons[s.type])}${bt_type_stats(b.era, s.type).range ? '' : ', close combat only'}. ${s.type === 'scout' ? ' Left still in brush or a building, they snipe unseen.' : ''} Tap the map to move them, or drag a route from the squad.`));
   }
   if (report.length) p.append(el('div', 'bt-feed', report.slice(-4).map((l) => el('div', null, l))));
@@ -212,7 +214,7 @@ function renderStatus() {
   let goal = '';
   if (b.refuge) goal = `Refuge ${Math.round(b.refuge.integrity)}%`;
   else if (b.bases.length) goal = `Bases ${b.bases.filter((q) => q.owner === 'you').length}–${b.bases.filter((q) => q.owner === 'rival').length}`;
-  else goal = `Saved ${b.saved}/${b.civ_total}${b.civ_lost ? ` · lost ${b.civ_lost}` : ''}`;
+  else { const f = b.civs.filter((q) => q.follow !== null).length; goal = `Out ${b.saved}/${b.civ_total}${f ? ` · ${f} follow` : ''}${b.civ_lost ? ` · ${b.civ_lost} lost` : ''}`; }
   let wave = '';
   if (b.phase === 'plan' && b.wave) wave = b.wave.inside ? `Next: ${b.wave.words} waking in the buildings` : `Next: ${b.wave.words} from the ${b.wave.sides.join(' and ')}`;
   st.innerHTML = '';
@@ -405,7 +407,6 @@ function draw(now, alpha) {
       for (const [a, d] of [[.2, .3], [.6, .25], [.45, .65], [.75, .7]]) c.fillRect(px + a * ts, py + d * ts, ts * .1, ts * .1);
     }
   }
-  if (b.extract_y !== null) { c.fillStyle = 'rgba(88,184,120,.16)'; c.fillRect(P(0), Q(b.extract_y), b.w * ts, (b.h - b.extract_y) * ts); }
   // blood
   for (const d of decals) { c.fillStyle = d.man ? 'rgba(170,30,30,.55)' : 'rgba(90,20,20,.45)'; c.beginPath(); c.arc(P(d.x), Q(d.y), ts * .22, 0, 7); c.fill(); }
   // barricades
@@ -421,7 +422,11 @@ function draw(now, alpha) {
   // places that matter, over the fog so they are never lost: what to defend, whom to fetch, what to take
   if (b.refuge) place(b.refuge, `REFUGE ${Math.round(b.refuge.integrity)}%`, '#55b3c4', b.refuge.integrity < 50 && Math.sin(now / 160) > 0);
   if (b.house && b.civs.some((q) => q.follow === null)) place(b.house, 'SURVIVORS', '#55b3c4', false);
-  if (b.extract_y !== null) label('EXIT', P(b.w / 2), Q(b.extract_y + 1), '#58b878');
+  if (b.extract_y !== null) {                                          // the way out, drawn over the fog: where the survivors must end up
+    c.fillStyle = 'rgba(88,184,120,.26)'; c.fillRect(P(0), Q(b.extract_y), b.w * ts, (b.h - b.extract_y) * ts);
+    c.strokeStyle = '#58b878'; c.lineWidth = 2; c.setLineDash([6, 4]); c.beginPath(); c.moveTo(P(0), Q(b.extract_y)); c.lineTo(P(b.w), Q(b.extract_y)); c.stroke(); c.setLineDash([]);
+    label('EXIT', P(b.w / 2), Q(b.extract_y + 1), '#58b878');
+  }
   for (const q of b.bases) {
     const col = q.owner === 'you' ? '#55b3c4' : q.owner === 'rival' ? '#e2573f' : '#c9c2ae';
     place(q, q.letter, col, false);
@@ -452,6 +457,11 @@ function draw(now, alpha) {
     c.fillStyle = 'rgba(85,179,196,.55)'; c.beginPath(); c.ellipse(P(x), Q(y) + ts * .3, ts * .3, ts * .1, 0, 0, 7); c.fill();
     if (!UI.sprite(c, b.era, 'human', P(x) - sz / 2, Q(y) - sz / 2, sz)) { c.fillStyle = '#55b3c4'; c.beginPath(); c.arc(P(x), Q(y), ts * .28, 0, 7); c.fill(); }
     if (cv2.bitten >= 0) { c.fillStyle = '#6a9a32'; c.beginPath(); c.arc(P(x) + ts * .3, Q(y) - ts * .3, ts * .1, 0, 7); c.fill(); }
+    const esc = cv2.follow !== null ? bt_squad(b, cv2.follow) : null, mine = b.squads.filter(bt_mine);
+    if (esc) {
+      c.strokeStyle = SQUAD_COL[mine.indexOf(esc) % SQUAD_COL.length]; c.globalAlpha = .55; c.lineWidth = 1; c.setLineDash([2, 3]);
+      c.beginPath(); c.moveTo(P(x), Q(y)); c.lineTo(P(esc.anchor[0]), Q(esc.anchor[1])); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
+    } else if (!bt_in_house(b, Math.floor(cv2.x), Math.floor(cv2.y), 0)) label('?', P(x), Q(y) - ts * .45, '#55b3c4');
   }
   for (const s of b.squads.filter((q) => !bt_mine(q))) for (const m of bt_squad_men(b, s)) {
     if (!vis[Math.floor(m.y) * b.w + Math.floor(m.x)]) continue;
