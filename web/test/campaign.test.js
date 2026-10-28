@@ -190,4 +190,27 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   for (let i = 0; i < 4 && !esc.over; i++) { if (esc.event) OB.cp_decide(esc, 0); esc.threat = null; OB.cp_choose(esc, { kind: 'rest' }); }
   assert(esc.log.some((l) => /El brote empeora/.test(l.text)), 'the outbreak gets worse every few days');
 }
+{ // restocking in a campaign battle: never by itself, your call, one supply, inside a base you hold, once a turn
+  const cs = mk({}); cs.supplies = 7;
+  const r = OB.cp_choose(cs, { kind: 'clear', zone: 'olivos' });
+  assert(r.battle.paid_restock && r.battle.supplies === 5, 'the battle carries what is left after the day\'s cost');
+  const b = OB.bt_new(r.battle); b.zeds.length = 0; b.wave.count = 0;
+  const s = b.squads.find(OB.bt_mine), q = b.bases[0];
+  q.owner = 'you'; s.ammo = 10;
+  assert.strictEqual(OB.bt_restock_block(b, s), 'away', 'not out in the street');
+  s.anchor = [(q.x0 + q.x1 + 1) / 2, (q.y0 + q.y1 + 1) / 2];
+  for (const m of OB.bt_squad_men(b, s)) { m.x = s.anchor[0]; m.y = s.anchor[1]; }
+  assert.strictEqual(OB.bt_restock(b, s.id), null);
+  assert(s.ammo > 10 && b.spent === 1, 'half the ammunition for one supply');
+  assert.strictEqual(OB.bt_restock(b, s.id), 'done', 'once a turn');
+  const before = s.ammo; s.path = [];
+  OB.bt_run_turn(b);
+  assert(s.ammo <= before, 'nothing restocks by itself at the end of the turn');
+  b.cfg.supplies = 1; assert.strictEqual(OB.bt_restock_block(b, s), 'poor', 'not with nothing left');
+  b.over = { victory: true }; const sup = cs.supplies;
+  OB.cp_finish_battle(cs, b);
+  assert(cs.log.some((l) => /reabastecer/.test(l.text)) && cs.supplies < sup + 2 + 10, 'the campaign pays for it');
+  const free = OB.bt_new({ objective: 'take', seed: 3 });
+  assert.strictEqual(OB.bt_restock_block(free, free.squads[0]), 'none', 'outside the campaign it stays automatic');
+}
 console.log('campaign tests passed');

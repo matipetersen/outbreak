@@ -275,6 +275,7 @@ function cp_choose(cs, op) {
     for (const q of cfg.company) q.ammo = Math.floor(bt_type_stats('modern', q.type).ammo / 2);
     cp_log(cs, 'No alcanzan los suministros: la compañía sale con la mitad de la munición.');
   }
+  cfg.paid_restock = true; cfg.supplies = cs.supplies;                 // restocking in the field comes out of what is left
   cs.op.cfg = cfg;
   return { battle: cfg };
 }
@@ -287,6 +288,7 @@ function cp_finish_battle(cs, b) {
   const z = cs.zones[op.zone], name = CP_ZONES[op.zone].name;
   cs.stats.battles++; if (won) cs.stats.won++;
   if (b) {
+    if (b.spent) { cs.supplies = Math.max(0, cs.supplies - b.spent); cp_log(cs, `En el combate se gastaron ${b.spent} suministros en reabastecer.`); }
     cs.stats.kills += b.kills; cs.stats.saved += b.saved || 0;
     for (const s of b.squads.filter((x) => x.side !== 'rival')) {
       const q = cs.company.find((x) => x.id === s.cid);

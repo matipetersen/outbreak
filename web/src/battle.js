@@ -1412,13 +1412,36 @@ function bt_capture_step(b, fx) {
   }
 }
 
+// Restocking paid with the campaign's supplies (cfg.paid_restock): a squad of yours inside the refuge or one of your
+// bases, once a turn, half its ammunition back for one supply. Returns why not, or null when done.
+const BT_RESTOCK = { cost: 1, share: 0.5 };
+function bt_restock_block(b, s) {
+  if (!b.cfg.paid_restock || !s || !bt_mine(s) || !s.men.length || !s.ammo_max) return 'none';
+  const tx = Math.floor(s.anchor[0]), ty = Math.floor(s.anchor[1]), base = bt_base_at(b, tx, ty);
+  if (!bt_in_refuge(b, tx, ty) && !(base && base.owner === 'you')) return 'away';
+  if (s.ammo >= s.ammo_max) return 'full';
+  if (s.restocked === b.turn) return 'done';
+  if ((b.cfg.supplies || 0) - (b.spent || 0) < BT_RESTOCK.cost) return 'poor';
+  return null;
+}
+function bt_restock(b, squad_id) {
+  const s = bt_squad(b, squad_id);
+  if (b.phase !== 'plan') return 'not now';
+  const why = bt_restock_block(b, s);
+  if (why) return why;
+  s.ammo = Math.min(s.ammo_max, s.ammo + Math.ceil(s.ammo_max * BT_RESTOCK.share));
+  s.restocked = b.turn; b.spent = (b.spent || 0) + BT_RESTOCK.cost;
+  b.report.push(`${s.name} restocked (${BT_RESTOCK.cost} supply).`);
+  return null;
+}
+
 function bt_end_turn(b) {
   // squads inside the refuge restock; lures burn out
   for (const s of b.squads) {
     if (!bt_alive(b, s)) continue;
     const base = bt_base_at(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1]));
     const stock = bt_in_refuge(b, Math.floor(s.anchor[0]), Math.floor(s.anchor[1])) ? 0.4 : base && base.owner === (s.side || 'you') ? 0.3 : 0;
-    if (stock && s.ammo < s.ammo_max) {
+    if (stock && s.ammo < s.ammo_max && !(b.cfg.paid_restock && bt_mine(s))) {   // in a campaign your restocking is paid for, and your call
       s.ammo = Math.min(s.ammo_max, s.ammo + Math.ceil(s.ammo_max * stock));
       if (bt_mine(s)) b.report.push(`${s.name} restocked.`);
     }
