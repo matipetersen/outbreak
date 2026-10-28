@@ -76,8 +76,10 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
   shield squad 3, heavy weapon 4, scouts 2. Each objective offers a standard company to start from; the choice is kept for
   the next battle and stored in the save. The first squads take the posts nearest the danger.
 * **Orders**: tap a squad (or its card), then tap a tile or drag a route; *Fire at will* / *Hold fire*; *Walk* / *Run*
-  (nobody shoots while running); *Melee* instead of shooting (no ammunition, no shots: with no route the squad closes in on
-  the nearest enemy it can see, and blows count even against the head-shot dead); one special action: shield squads build a barricade (four quiet seconds, four per
+  (nobody shoots while running); two hand-to-hand stances instead of shooting (no ammunition, no shots, and blows count even
+  against the head-shot dead): *Charge* (with no route the squad closes in on the nearest enemy it can see, and each man
+  goes for the closest one, formation or not) and *Hold ground* (nobody leaves the line; a man in his place strikes first,
+  with a longer reach, a quarter harder, and the dead land a fifth fewer bites on a squad standing still); one special action: shield squads build a barricade (four quiet seconds, four per
   battle), scouts throw a lure that calls the dead for two turns. Orders carry over between turns.
 * **Squads** come from the era (longbowmen and Greek fire in 1348, M16s and an M60 in 1986, pulse rifles in the station).
   Every shot is noise and noise brings the dead; accuracy falls with range; in the dark you see and shoot five tiles.

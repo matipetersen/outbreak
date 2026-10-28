@@ -727,7 +727,7 @@ function bt_walk_line(b, a, c) {
 function bt_set(b, squad_id, opts) {
   const s = bt_squad(b, squad_id);
   if (!s || b.phase !== 'plan') return false;
-  if (opts.stance === 'fire' || opts.stance === 'hold' || opts.stance === 'melee') s.stance = opts.stance;
+  if (['fire', 'hold', 'melee', 'guard'].includes(opts.stance)) s.stance = opts.stance;
   if (opts.pace === 'walk' || opts.pace === 'run' || opts.pace === 'sneak') s.pace = opts.pace;
   return true;
 }
@@ -1006,17 +1006,18 @@ function bt_men_step(b, grid, fx) {
       const speed = bt_pace_speed(broken ? 'run' : s.pace) * st.speed * 1.3 * bt_speed_factor(b, m.x, m.y, 'h');
       bt_move(b, m, tx, ty, speed * BT.DT, 'h');
       m.cd -= BT.DT; m.mcd -= BT.DT;
-      // close combat first: whatever has its hands on you
-      const close = bt_near_zeds(b, grid, m.x, m.y, 0.75);
+      // close combat first: whatever has its hands on you. Holding ground, a man in his place in the line strikes first and harder
+      const braced = s.stance === 'guard' && !broken && Math.hypot(m.x - tx, m.y - ty) < 0.6, reachHand = braced ? 1.0 : 0.75;
+      const close = bt_near_zeds(b, grid, m.x, m.y, reachHand);
       if (close.length && m.mcd <= 0) {
         const z = close[0][1];
-        const dmg = bt_int(b, st.melee[0], st.melee[1]) * (z.special && CONTENT.specials[z.special].flags.includes('tough') ? 0.7 : 1) * (z.tgt === null ? 3 : 1);   // one that never saw it coming goes down quietly
+        const dmg = bt_int(b, st.melee[0], st.melee[1]) * (z.special && CONTENT.specials[z.special].flags.includes('tough') ? 0.7 : 1) * (z.tgt === null ? 3 : 1) * (braced ? 1.25 : 1);   // one that never saw it coming goes down quietly
         bt_hurt_zed(b, z, dmg, s, fx);
         m.mcd = 0.9;
         return;
       }
-      if (m.mcd <= 0 && (s.stance === 'melee' || st.range <= 0 || s.ammo <= 0)) {      // knives and rifle butts against the other company
-        const e = foes.find((f) => f.hp > 0 && Math.hypot(f.x - m.x, f.y - m.y) < 0.75);
+      if (m.mcd <= 0 && (s.stance === 'melee' || s.stance === 'guard' || st.range <= 0 || s.ammo <= 0)) {      // knives and rifle butts against the other company
+        const e = foes.find((f) => f.hp > 0 && Math.hypot(f.x - m.x, f.y - m.y) < reachHand);
         if (e) { bt_shoot_man(b, e, bt_int(b, st.melee[0], st.melee[1]), s, fx, bt_unaware(b, e, m)); m.mcd = 0.9; return; }
       }
       if (broken || s.stance !== 'fire' || st.range <= 0 || s.ammo <= 0 || m.cd > 0 || runningNow) return;
@@ -1276,7 +1277,7 @@ function bt_zeds_step(b, grid, fx) {
       if (z.cd <= 0) {
         z.cd = prof.speed >= 1.2 ? 0.7 : 1.0;
         const s = reach.kind === 'man' ? bt_squad(b, reach.squad) : null;
-        const armor = s ? bt_type_stats(b.era, s.type).armor : 1;
+        const armor = s ? bt_type_stats(b.era, s.type).armor * (s.stance === 'guard' && s.state !== 'broken' && !s.moving ? 0.8 : 1) : 1;   // a line that holds is harder to pull a man out of
         if (bt_rand(b) < (sp.acc / 100) * armor) {
           bt_hurt_living(b, reach, bt_int(b, sp.dmg[0], sp.dmg[1]) * diff.damage * 0.8, fx, z);
           if (reach.hp > 0 && bt_rand(b) < prof.infect) bt_infect(b, reach, fx);

@@ -245,7 +245,6 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   assert(!b.zeds.includes(z) || z.hp < z.max_hp, 'they got their hands on it');
   assert(Math.hypot(s.anchor[0] - start[0], s.anchor[1] - start[1]) > 0.5 || !b.zeds.includes(z), 'they went for it');
 }
-console.log('campaign tests passed');
 { // a defence against the dead that held on the clock is graded: clean, costly, or by a hair (the dead already inside)
   const hold = (seed, integrity, inside) => {
     const cs = mk({ seed }); cs.threat = { zone: 'florida', by: 'dead' }; cs.supplies = 10; cs.recruits = 6;
@@ -273,4 +272,24 @@ console.log('campaign tests passed');
     OB.cp_finish_battle(cs, b); return cs; })();
   assert(!worst.over && worst.zones.florida.dead === 2, 'a night that held never ends the campaign by itself');
 }
-
+{ // holding ground: hand to hand without leaving the line; the dead come to it, and it costs fewer men than a charge
+  const run = (stance, seed) => {
+    const b = OB.bt_new({ objective: 'take', rivals: 'none', zombies: 'classic', seed, forces: ['line'] });
+    b.zeds.length = 0; b.wave.count = 0;
+    const s = b.squads.find(OB.bt_mine), start = [s.anchor[0], s.anchor[1]], men = s.men.length, ammo = s.ammo;
+    assert(OB.bt_set(b, s.id, { stance }) && s.stance === stance);
+    for (let i = 0; i < 18; i++) { const a = i / 18 * 6.28, r = 4 + (i % 3) * 2; OB.bt_spawn_zed(b, s.anchor[0] + Math.cos(a) * r, s.anchor[1] + Math.sin(a) * r, i % 4 ? 'walker' : 'runner'); }
+    let moved = 0, broke = false;                                         // a squad that breaks runs, whatever its orders
+    for (let t = 0; t < 3 && !b.over; t++) { OB.bt_begin_turn(b); for (let i = 0; i < 120 && b.phase === 'resolve'; i++) { OB.bt_tick(b); if (s.state === 'broken') broke = true; if (!broke) moved = Math.max(moved, Math.hypot(s.anchor[0] - start[0], s.anchor[1] - start[1])); } }
+    return { lost: men - s.men.length, kills: s.kills, moved, spent: ammo - s.ammo };
+  };
+  let guard = 0, charge = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const g = run('guard', seed), c = run('melee', seed);
+    assert.strictEqual(g.spent, 0, 'not a bullet'); assert(g.kills > 0, 'they strike what comes');
+    assert(g.moved < 0.05, `the line stays where it was put (${g.moved})`);
+    guard += g.lost; charge += c.lost;
+  }
+  assert(guard < charge, `holding ground costs fewer men than charging (${guard} vs ${charge})`);
+}
+console.log('campaign tests passed');
