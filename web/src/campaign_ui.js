@@ -240,7 +240,7 @@ function menu() {
       el('div', null, 'Anillo naranja: pegado a lo tuyo, podés operar ahí. Puntos rojos: cuántos muertos hay. Pulso rojo: amenazado. ! : sobrevivientes haciendo señas.'),
       el('div', null, 'H hospital (+2 reclutas por día), D depósito (+3 suministros por día), A arsenal (equipos de ametralladora). ★ Florida: si la perdés, se terminó.'),
       el('div', null, 'Cada noche tus barrios producen, los muertos se expanden y las facciones se mueven. Una amenaza que nadie atiende es un barrio perdido.'),
-      el('div', null, 'Ganás con ocho barrios, o cuando los Segadores, los Milicos y los Renacidos se queden sin nada.'),
+      el('div', null, 'Ganás con ocho barrios, o con cinco cuando los Segadores, los Milicos y los Renacidos se queden sin nada.'),
       el('div', null, 'Las batallas se pelean en un plano de cada barrio. La pantalla de batalla está en inglés.'),
     ]));
     const m = el('div', 'menu');

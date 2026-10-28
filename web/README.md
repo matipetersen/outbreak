@@ -131,8 +131,14 @@ Engine: `src/campaign.js` (pure and deterministic like a battle, saved under `ou
   refugees off the Mitre tracks, a Task Force truce for one of your districts, the Reapers' toll on the Panamericana, the
   Reborn's preachers, medicine for the Unicenter, a horde coming down Libertador that you can meet, block or lead into a
   rival's district, a signal from a rooftop, deserters, a police armoury. Each choice moves something on the map.
-* **The end**: eight districts, or no district left to the Reapers, the Task Force and the Reborn, wins. Losing Florida, or
-  the whole company with fewer than four recruits to raise another, loses.
+* **Hard from the first night** (`CP_DIFF`; normal is meant to be hard, easy is the gentler first version): a horde comes for
+  Florida the first night; every battle costs two supplies (without them, half ammunition); you start with six supplies and
+  two recruits; districts away from Florida start more infested and the empty ones get worse every five days; clearing a
+  district is a real fight (bigger waves from three sides, more dead inside); factions field an extra squad and come back
+  after a day. Losing a defence of Florida does not end it: home is sacked (half the supplies and recruits) and scarred (one
+  level of the dead; a rest day cleans one).
+* **The end**: eight districts, or five once the Segadores, the Milicos and the Renacidos hold nothing, wins. Florida
+  overrun (three scars), or the whole company gone with fewer than four recruits to raise another, loses.
 
 ## Touch controls
 

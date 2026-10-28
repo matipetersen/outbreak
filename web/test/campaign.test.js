@@ -84,8 +84,13 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   assert(!OB.cp_ops(h).some((o) => o.kind === 'abandon'), 'Florida cannot be abandoned');
   const r2 = OB.cp_choose(h, { kind: 'defend', zone: 'florida' });
   assert(r2.battle.objective === 'hold' && r2.battle.refuge_name === 'Gimnasio de la escuela');
+  h.supplies = 10; h.recruits = 6;
   OB.cp_finish_battle(h, fakeBattle(h, false));
-  assert(h.over && !h.over.victory && /Florida/.test(h.over.title), 'lose Florida and it is over');
+  assert(!h.over && h.zones.florida.owner === 'you', 'losing a defence of Florida does not end it');
+  assert(h.supplies <= 5 + 4 && h.zones.florida.dead === 1 && h.log.some((l) => /Florida/.test(l.text) && /mitad/.test(l.text)), 'but it is sacked and scarred');
+  const g = mk({}); g.zones.florida.dead = 2; g.threat = { zone: 'florida', by: 'dead' };
+  OB.cp_choose(g, { kind: 'defend', zone: 'florida' }); OB.cp_finish_battle(g, fakeBattle(g, false));
+  assert(g.over && !g.over.victory && /Florida/.test(g.over.title), 'the third time the dead have it, and it is over');
 }
 { // every encounter can be met with every choice, and each changes something
   for (const e of OB.CP_EVENTS) {
@@ -166,5 +171,23 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   }
   const cs = mk({}); const b = OB.bt_new(OB.cp_battle_cfg(cs, { kind: 'clear', zone: 'olivos' }));
   assert.strictEqual(b.squads.find(OB.bt_mine).type_name, 'Fusileros', 'the squads keep their campaign names');
+}
+{ // the pressure from the first night: a horde for Florida, battles cost supplies, the empty districts get worse
+  const cs = mk({});
+  assert.strictEqual(cs.supplies, 6); assert(cs.zones.martelli.dead === 2 && cs.zones.tigre.dead === 3 && cs.zones.escobar.dead === 3, 'next door as before, the rest worse');
+  OB.cp_choose(cs, { kind: 'rest' });
+  assert(cs.threat && cs.threat.zone === 'florida' && cs.threat.by === 'dead', 'the first night, a horde comes for Florida');
+  if (cs.event) { cs.event = null; cs.threat = { zone: 'florida', by: 'dead' }; }
+  const s0 = cs.supplies; assert(OB.cp_choose(cs, { kind: 'defend', zone: 'florida' }).battle);
+  assert.strictEqual(cs.supplies, s0 - 2, 'a battle costs two supplies');
+  OB.cp_finish_battle(cs, fakeBattle(cs, true));
+  const poor = mk({}); poor.supplies = 0;
+  const r = OB.cp_choose(poor, { kind: 'clear', zone: 'olivos' });
+  assert(r.battle.company.every((q) => q.ammo > 0) && OB.bt_new(r.battle).squads.find(OB.bt_mine).ammo < OB.bt_type_stats('modern', 'line').ammo, 'without supplies, half the ammunition');
+  const e = mk({ difficulty: 'easy' });
+  assert.strictEqual(e.supplies, 10); assert.strictEqual(OB.CP_DIFF.easy.cost, 0, 'easy is the gentler first version');
+  const esc = mk({}); esc.zones.escobar.dead = 1;
+  for (let i = 0; i < 4 && !esc.over; i++) { if (esc.event) OB.cp_decide(esc, 0); esc.threat = null; OB.cp_choose(esc, { kind: 'rest' }); }
+  assert(esc.log.some((l) => /El brote empeora/.test(l.text)), 'the outbreak gets worse every few days');
 }
 console.log('campaign tests passed');
