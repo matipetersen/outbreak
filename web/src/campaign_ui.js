@@ -146,7 +146,7 @@ function renderPanel(p) {
   // the company
   p.append(el('h3', 'sec', 'Compañía'));
   const comp = el('div', 'cp-company');
-  for (const q of cs.company) comp.append(el('div', 'cp-squad', [el('b', null, q.call), el('small', null, `${CP_TYPES[q.type]} · ${q.men}/${cp_squad_max(q)}`)]));
+  for (const q of cs.company) comp.append(el('div', 'cp-squad', [el('b', null, q.call), el('small', null, `${CP_TYPES[q.type]} · ${q.men}/${cp_squad_max(q)}${cp_ammo_max(q) ? ` · mun. ${Math.round(100 * cp_ammo(q) / cp_ammo_max(q))}%` : ''}`)]));
   p.append(comp, btn('btn', 'Reorganizar: reclutas y escuadras nuevas', refit));
   // the latest news
   p.append(el('h3', 'sec', 'Novedades'), el('div', 'bt-feed', cs.log.slice(-6).reverse().map((l) => el('div', null, `Día ${l.day}: ${l.text}`))));
@@ -177,11 +177,13 @@ function refit() {
   overlay((box, close) => {
     const render = () => {
       box.innerHTML = '';
-      box.append(el('h2', 'end-title', 'Reorganizar'), el('p', 'note', `${cs.recruits} reclutas, ${cs.supplies} suministros. Cada recluta llena un lugar en una escuadra. Una escuadra nueva necesita un recluta por hombre y suministros para las armas.`));
+      box.append(el('h2', 'end-title', 'Reorganizar'), el('p', 'note', `${cs.recruits} reclutas, ${cs.supplies} suministros. Cada recluta llena un lugar en una escuadra. Recargar cuesta un suministro por media carga: la munición que no se dispara vuelve con la escuadra. Una escuadra nueva necesita un recluta por hombre y suministros para las armas.`));
       for (const q of cs.company) {
         const need = cp_squad_max(q) - q.men;
-        const row = el('div', 'row', [el('div', 'main', [el('div', 'name', q.name), el('div', 'sub', `${q.men}/${cp_squad_max(q)} hombres`)])]);
+        const full = cp_ammo_max(q), pct = full ? Math.round(100 * cp_ammo(q) / full) : null;
+        const row = el('div', 'row', [el('div', 'main', [el('div', 'name', q.name), el('div', 'sub', `${q.men}/${cp_squad_max(q)} hombres${full ? ` · munición ${cp_ammo(q)}/${full} (${pct}%)` : ' · cuerpo a cuerpo'}`)])]);
         if (need > 0) row.append(btn('btn', `Completar (${Math.min(need, cs.recruits)})`, () => { const e = cp_refill(cs, q.id); if (e) toast(e); cp_save(cs); render(); }));
+        if (full && cp_ammo(q) < full) row.append(btn('btn', 'Recargar (−1)', () => { const e = cp_reload(cs, q.id); if (e) toast(e); cp_save(cs); render(); }));
         box.append(row);
       }
       box.append(el('h3', 'sec', 'Armar una escuadra'));

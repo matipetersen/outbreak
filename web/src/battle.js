@@ -727,7 +727,7 @@ function bt_walk_line(b, a, c) {
 function bt_set(b, squad_id, opts) {
   const s = bt_squad(b, squad_id);
   if (!s || b.phase !== 'plan') return false;
-  if (opts.stance === 'fire' || opts.stance === 'hold') s.stance = opts.stance;
+  if (opts.stance === 'fire' || opts.stance === 'hold' || opts.stance === 'melee') s.stance = opts.stance;
   if (opts.pace === 'walk' || opts.pace === 'run' || opts.pace === 'sneak') s.pace = opts.pace;
   return true;
 }
@@ -956,6 +956,10 @@ function bt_squads_step(b, fx) {
       const nx = bt_descend(b, f, s.anchor[0], s.anchor[1], 'h');
       target = nx ? [nx[0] + 0.5, nx[1] + 0.5] : null; pace = 'run';
     } else if (s.path.length) target = s.path[0];
+    else if (s.stance === 'melee') {                                    // no route: close in on the nearest enemy in sight
+      const e = bt_melee_target(b, s, s.anchor[0], s.anchor[1], 6);
+      if (e && Math.hypot(e.x - s.anchor[0], e.y - s.anchor[1]) > 0.8) target = [e.x, e.y];
+    }
     const before = [s.anchor[0], s.anchor[1]];
     const lag = b.civs.some((c) => c.follow === s.id && Math.hypot(c.x - s.anchor[0], c.y - s.anchor[1]) > 2.6);   // nobody leaves the survivors behind
     if (target && spread < 1.6 && !lag) {
@@ -995,6 +999,10 @@ function bt_men_step(b, grid, fx) {
       const o = bt_slot(i, men.length, s.facing);
       let tx = s.anchor[0] + o[0], ty = s.anchor[1] + o[1];
       if (!bt_passable(b, tx, ty, 'h')) { tx = s.anchor[0]; ty = s.anchor[1]; }
+      if (s.stance === 'melee' && !broken) {                            // each man goes for the enemy closest to him
+        const e = bt_melee_target(b, s, m.x, m.y, 2.2);
+        if (e) { tx = e.x; ty = e.y; }
+      }
       const speed = bt_pace_speed(broken ? 'run' : s.pace) * st.speed * 1.3 * bt_speed_factor(b, m.x, m.y, 'h');
       bt_move(b, m, tx, ty, speed * BT.DT, 'h');
       m.cd -= BT.DT; m.mcd -= BT.DT;
@@ -1006,6 +1014,10 @@ function bt_men_step(b, grid, fx) {
         bt_hurt_zed(b, z, dmg, s, fx);
         m.mcd = 0.9;
         return;
+      }
+      if (m.mcd <= 0 && (s.stance === 'melee' || st.range <= 0 || s.ammo <= 0)) {      // knives and rifle butts against the other company
+        const e = foes.find((f) => f.hp > 0 && Math.hypot(f.x - m.x, f.y - m.y) < 0.75);
+        if (e) { bt_shoot_man(b, e, bt_int(b, st.melee[0], st.melee[1]), s, fx, bt_unaware(b, e, m)); m.mcd = 0.9; return; }
       }
       if (broken || s.stance !== 'fire' || st.range <= 0 || s.ammo <= 0 || m.cd > 0 || runningNow) return;
       if (st.setup && s.still < st.setup) return;
@@ -1047,6 +1059,15 @@ function bt_men_step(b, grid, fx) {
       if (b.t - s.last_noise >= 4 || b.t < s.last_noise) { bt_noise(b, m.x, m.y, st.noise, fx); s.last_noise = b.t; }
     });
   }
+}
+
+// The nearest enemy (one of the dead, or a man of the other company) within r of (x, y) and in sight, for close combat.
+function bt_melee_target(b, s, x, y, r) {
+  let best = null, bd = r;
+  for (const z of b.zeds) { const d = Math.hypot(z.x - x, z.y - y); if (d < bd && bt_los(b, x, y, z.x, z.y)) { bd = d; best = z; } }
+  const side = s.side || 'you';
+  for (const e of b.men) { if (bt_side_of(b, e) === side) continue; const d = Math.hypot(e.x - x, e.y - y); if (d < bd && bt_los(b, x, y, e.x, e.y)) { bd = d; best = e; } }
+  return best;
 }
 
 // A man hit by the other company's fire: armour helps, and being shot at shakes the whole squad.

@@ -179,11 +179,11 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   assert(cs.threat && cs.threat.zone === 'florida' && cs.threat.by === 'dead', 'the first night, a horde comes for Florida');
   if (cs.event) { cs.event = null; cs.threat = { zone: 'florida', by: 'dead' }; }
   const s0 = cs.supplies; assert(OB.cp_choose(cs, { kind: 'defend', zone: 'florida' }).battle);
-  assert.strictEqual(cs.supplies, s0 - 2, 'a battle costs two supplies');
+  assert.strictEqual(cs.supplies, s0 - 1, 'a battle costs a supply of fuel and food');
   OB.cp_finish_battle(cs, fakeBattle(cs, true));
   const poor = mk({}); poor.supplies = 0;
-  const r = OB.cp_choose(poor, { kind: 'clear', zone: 'olivos' });
-  assert(r.battle.company.every((q) => q.ammo > 0) && OB.bt_new(r.battle).squads.find(OB.bt_mine).ammo < OB.bt_type_stats('modern', 'line').ammo, 'without supplies, half the ammunition');
+  assert(/no sale nadie/.test(OB.cp_choose(poor, { kind: 'clear', zone: 'olivos' }).error), 'without a supply nobody goes out');
+  assert(!OB.cp_choose(poor, { kind: 'rest' }).error, 'but resting is free');
   const e = mk({ difficulty: 'easy' });
   assert.strictEqual(e.supplies, 10); assert.strictEqual(OB.CP_DIFF.easy.cost, 0, 'easy is the gentler first version');
   const esc = mk({}); esc.zones.escobar.dead = 1;
@@ -191,7 +191,7 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   assert(esc.log.some((l) => /El brote empeora/.test(l.text)), 'the outbreak gets worse every few days');
 }
 { // restocking in a campaign battle: never by itself, your call, one supply, inside a base you hold, once a turn
-  const cs = mk({}); cs.supplies = 7;
+  const cs = mk({}); cs.supplies = 6;
   const r = OB.cp_choose(cs, { kind: 'clear', zone: 'olivos' });
   assert(r.battle.paid_restock && r.battle.supplies === 5, 'the battle carries what is left after the day\'s cost');
   const b = OB.bt_new(r.battle); b.zeds.length = 0; b.wave.count = 0;
@@ -212,5 +212,37 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   assert(cs.log.some((l) => /reabastecer/.test(l.text)) && cs.supplies < sup + 2 + 10, 'the campaign pays for it');
   const free = OB.bt_new({ objective: 'take', seed: 3 });
   assert.strictEqual(OB.bt_restock_block(free, free.squads[0]), 'none', 'outside the campaign it stays automatic');
+}
+{ // ammunition belongs to the squad: what is not fired comes back to the campaign; reloading costs a supply a half load
+  const cs = mk({});
+  const q = cs.company[0], full = OB.cp_ammo_max(q);
+  assert.strictEqual(OB.cp_ammo(q), full);
+  const r = OB.cp_choose(cs, { kind: 'clear', zone: 'olivos' });
+  assert.strictEqual(r.battle.company[0].ammo, full);
+  const b = OB.bt_new(r.battle);
+  b.squads.find(OB.bt_mine).ammo = 37; b.over = { victory: true };
+  OB.cp_finish_battle(cs, b);
+  assert.strictEqual(cs.company[0].ammo, 37, 'the rest comes back');
+  if (cs.event) cs.event = null;
+  const r2 = OB.cp_battle_cfg(cs, { kind: 'clear', zone: 'munro' });
+  assert.strictEqual(r2.company[0].ammo, 37, 'and goes into the next fight');
+  cs.supplies = 1;
+  assert.strictEqual(OB.cp_reload(cs, q.id), null);
+  assert(cs.company[0].ammo === 37 + Math.ceil(full / 2) && cs.supplies === 0, 'half a load for a supply');
+  assert(OB.cp_reload(cs, q.id), 'not without supplies');
+  const old = mk({}); delete old.company[0].ammo; assert.strictEqual(OB.cp_ammo(old.company[0]), full, 'old saves come full');
+}
+{ // melee: no shots, no ammunition spent; with no route the squad closes in; blows count against the head-shot dead
+  const b = OB.bt_new({ objective: 'take', rivals: 'none', zombies: 'classic', seed: 4 });
+  b.zeds.length = 0; b.wave.count = 0;
+  const s = b.squads.find(OB.bt_mine);
+  OB.bt_set(b, s.id, { stance: 'melee' });
+  const z = OB.bt_spawn_zed(b, s.anchor[0], s.anchor[1] - 4, 'walker');
+  const ammo = s.ammo, start = [s.anchor[0], s.anchor[1]];
+  OB.bt_begin_turn(b);
+  let shots = 0; for (let i = 0; i < 80 && b.phase === 'resolve'; i++) shots += OB.bt_tick(b).filter((f) => f.kind === 'shot' && Math.hypot(f.x0 - s.anchor[0], f.y0 - s.anchor[1]) < 3).length;
+  assert.strictEqual(s.ammo, ammo, 'not a bullet');
+  assert(!b.zeds.includes(z) || z.hp < z.max_hp, 'they got their hands on it');
+  assert(Math.hypot(s.anchor[0] - start[0], s.anchor[1] - start[1]) > 0.5 || !b.zeds.includes(z), 'they went for it');
 }
 console.log('campaign tests passed');
