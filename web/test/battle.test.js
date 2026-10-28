@@ -448,4 +448,21 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   assert(!b.over && b.reinf.sent === 1, 'no early win: a column came instead');
   assert(b.report.some((l) => /reinforcements arrive/.test(l)), 'and its arrival is in the report');
 }
+{ // retreat: back to the refuge (or a base you hold, or your own edge), running, turned to face what it left
+  const b = mk({ objective: 'hold' }), s = b.squads.find(OB.bt_mine), R = b.refuge;
+  placeMen(b, s, (R.x0 + R.x1) / 2 + 0.5, Math.max(1.5, R.y0 - 8));
+  assert.strictEqual(OB.bt_retreat(b, s.id), null);
+  const end = s.path[s.path.length - 1];
+  assert(OB.bt_in_refuge(b, Math.floor(end[0]), Math.floor(end[1])), 'into the refuge');
+  assert(s.pace === 'run' && s.face_to && s.face_to[1] < 0, 'running, and turned back toward the dead');
+  const t = mk({ objective: 'take', rivals: 'none' }), u = t.squads.find(OB.bt_mine);
+  placeMen(t, u, 12.5, 4.5);
+  for (const q of t.bases) q.owner = null;
+  assert.strictEqual(OB.bt_retreat(t, u.id), null);
+  assert(u.path[u.path.length - 1][1] > t.h - 4, 'nothing held: back to your own edge');
+  const q = t.bases[0]; q.owner = 'you';
+  assert.strictEqual(OB.bt_retreat(t, u.id), null);
+  const e = u.path[u.path.length - 1];
+  assert(e[0] >= q.x0 - 1 && e[0] <= q.x1 + 2 && e[1] >= q.y0 - 1 && e[1] <= q.y1 + 2, 'to the base you hold');
+}
 console.log('battle tests passed');

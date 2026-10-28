@@ -206,6 +206,7 @@ function renderPanel() {
       const r = btn('bt-seg' + (why ? '' : ' on'), label, () => { if (!bt_restock(b, s.id)) { audio_play('pickup'); report = b.report.slice(); renderPanel(); } });
       r.disabled = !!why; row2.append(r);
     }
+    row2.append(btn('bt-seg', 'Retreat', () => { const why = bt_retreat(b, s.id); if (why) flash(why); else { mode = null; audio_play('order'); } renderPanel(); }));
     row2.append(btn('bt-seg', 'Stop', () => { bt_clear(b, s.id); mode = null; renderPanel(); }));
     p.append(row2);
     p.append(el('div', 'bt-hint', mode === 'face' ? 'Tap the side they should watch. Fire from behind them hurts most; when they are on the move, they turn when they arrive.' : mode === 'ability' ? (kind === 'lure' ? 'Tap where the lure should go (within 10 tiles). The dead go to the noise for two turns.' : 'Tap a tile within 3 tiles of where the squad stops. They need 4 quiet seconds there to build it.')
@@ -299,7 +300,7 @@ function openMenu() {
   box.append(el('h2', 'end-title', 'Orders'), el('div', 'sum', [
     el('div', null, 'Each turn: give orders, then EXECUTE. Ten seconds of battle play out and you cannot intervene.'),
     el('div', null, 'Tap a squad, then tap a tile to send it there, or drag a route from it. Orders carry over to the next turn.'),
-    el('div', null, 'Fire at will kills, but every shot is noise and noise brings the dead. Hold fire to stay quiet. Charge: hand to hand, no ammunition, no shots; with no route the squad closes in on the nearest enemy it can see and each man goes for the closest one, formation or not. Hold ground: hand to hand without leaving the line; nobody chases, and a man in his place strikes first (a longer reach), harder, and is harder to pull down. Blows always count, even against the dead that only die to a head shot. A squad out of ammunition fights like this anyway.'),
+    el('div', null, 'Fire at will kills, but every shot is noise and noise brings the dead. Hold fire to stay quiet. Charge: hand to hand, no ammunition, no shots; with no route the squad closes in on the nearest enemy it can see and each man goes for the closest one, formation or not. Hold ground: hand to hand without leaving the line; nobody chases, and a man in his place strikes first (a longer reach), harder, and is harder to pull down. Blows always count, even against the dead that only die to a head shot. A squad out of ammunition fights like this anyway. Retreat: the squad runs back to the refuge, the nearest base you hold, or your own edge of the map, and turns to face what it left; pick Walk after it to fall back firing.'),
     el('div', null, 'Running is fast, but nobody shoots while running. Machine guns need a moment to set up.'),
     el('div', null, 'Morale falls when men die or the dead swarm a squad. A broken squad runs for safety until it rallies.'),
     el('div', null, 'Red arrows: where the dead you can see are heading. Red edge marks: where the next wave comes in.'),

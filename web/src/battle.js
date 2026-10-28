@@ -824,6 +824,31 @@ function bt_rival_orders(b) {
 }
 
 // Which way a squad standing still is looking (plan phase): the side it guards. Shots from behind it hurt it most.
+// Fall back: to the refuge, else the nearest base you hold, else your own edge of the map, straight behind the squad.
+// They run (nobody shoots while running; pick Walk after it for a fighting withdrawal) and turn to face what they left.
+function bt_retreat_goal(b, s) {
+  const here = [s.anchor[0], s.anchor[1]], centre = (q) => [(q.x0 + q.x1 + 1) / 2, (q.y0 + q.y1 + 1) / 2];
+  if (b.refuge && !bt_in_refuge(b, Math.floor(here[0]), Math.floor(here[1]))) return centre(b.refuge);
+  const held = (b.bases || []).filter((q) => q.owner === 'you' && !(here[0] >= q.x0 && here[0] < q.x1 + 1 && here[1] >= q.y0 && here[1] < q.y1 + 1))
+    .sort((p, q) => dist(centre(p), here) - dist(centre(q), here) || p.letter.localeCompare(q.letter));
+  if (held.length) return centre(held[0]);
+  if (here[1] < b.h - 3) return [here[0], b.h - 1.5];
+  return null;
+}
+function bt_retreat(b, squad_id) {
+  const s = bt_squad(b, squad_id);
+  if (!s || !bt_alive(b, s) || b.phase !== 'plan' || !bt_mine(s)) return 'Not now.';
+  if (s.state === 'broken') return 'They are already running.';
+  const goal = bt_retreat_goal(b, s);
+  if (!goal) return 'Nowhere safer to fall back to.';
+  const from = [s.anchor[0], s.anchor[1]];
+  if (!bt_order_move(b, s.id, [goal])) return 'No way back from here.';
+  s.pace = 'run'; s.ability = null;
+  const end = s.path[s.path.length - 1], dx = from[0] - end[0], dy = from[1] - end[1], d = Math.hypot(dx, dy);
+  if (d > 0.3) s.face_to = [dx / d, dy / d];
+  return null;
+}
+
 function bt_face(b, squad_id, x, y) {
   const s = bt_squad(b, squad_id);
   if (!s || b.phase !== 'plan' || !bt_mine(s)) return false;
