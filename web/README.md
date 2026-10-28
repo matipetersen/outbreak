@@ -137,6 +137,9 @@ Engine: `src/campaign.js` (pure and deterministic like a battle, saved under `ou
   district is a real fight (bigger waves from three sides, more dead inside); factions field an extra squad and come back
   after a day. Losing a defence of Florida does not end it: home is sacked (half the supplies and recruits) and scarred (one
   level of the dead; a rest day cleans one).
+* **Restocking in the field is paid and optional**: in a campaign battle nothing restocks by itself. A squad inside the
+  refuge or a base you hold can *Reabastecer* during the plan phase, once a turn: half its ammunition for one of the
+  campaign's supplies (what is left after the day's cost travels with the battle, and what you spend is taken off after it).
 * **The end**: eight districts, or five once the Segadores, the Milicos and the Renacidos hold nothing, wins. Florida
   overrun (three scars), or the whole company gone with fewer than four recruits to raise another, loses.
 

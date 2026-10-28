@@ -196,6 +196,13 @@ function renderPanel() {
     if (kind === 'lure') row2.append(btn('bt-seg' + (mode === 'ability' ? ' on' : ''), `Lure: ${era.lure} (${s.lures_left})`, () => { mode = mode === 'ability' ? null : 'ability'; renderPanel(); }));
     if (kind === 'barricade') row2.append(btn('bt-seg' + (mode === 'ability' ? ' on' : ''), `Barricade (${b.barricades_left} left)`, () => { mode = mode === 'ability' ? null : 'ability'; renderPanel(); }));
     row2.append(btn('bt-seg' + (mode === 'face' ? ' on' : ''), 'Face', () => { mode = mode === 'face' ? null : 'face'; renderPanel(); }));
+    const why = bt_restock_block(b, s);                                   // campaign only: restocking costs supplies, and it is your call
+    if (why !== 'none' && why !== 'away') {
+      const left = (b.cfg.supplies || 0) - (b.spent || 0);
+      const label = why === 'full' ? 'Munición completa' : why === 'done' ? 'Ya reabastecida este turno' : why === 'poor' ? 'Sin suministros' : `Reabastecer (−${BT_RESTOCK.cost} · quedan ${left})`;
+      const r = btn('bt-seg' + (why ? '' : ' on'), label, () => { if (!bt_restock(b, s.id)) { audio_play('pickup'); report = b.report.slice(); renderPanel(); } });
+      r.disabled = !!why; row2.append(r);
+    }
     row2.append(btn('bt-seg', 'Stop', () => { bt_clear(b, s.id); mode = null; renderPanel(); }));
     p.append(row2);
     p.append(el('div', 'bt-hint', mode === 'face' ? 'Tap the side they should watch. Fire from behind them hurts most; when they are on the move, they turn when they arrive.' : mode === 'ability' ? (kind === 'lure' ? 'Tap where the lure should go (within 10 tiles). The dead go to the noise for two turns.' : 'Tap a tile within 3 tiles of where the squad stops. They need 4 quiet seconds there to build it.')
@@ -221,6 +228,7 @@ function renderStatus() {
   if (b.phase === 'plan' && b.reinf && b.reinf.coming) wave = `A column of ${bt_rival_name(b)} arrives from the north`;
   else if (b.phase === 'plan' && b.wave) wave = b.wave.inside ? `Next: ${b.wave.words} waking in the buildings` : `Next: ${b.wave.words} from the ${b.wave.sides.join(' and ')}`;
   st.innerHTML = '';
+  if (b.cfg.paid_restock) goal += ` · Sum. ${(b.cfg.supplies || 0) - (b.spent || 0)}`;
   st.append(el('div', 'bt-l1', [el('b', null, `Turn ${Math.min(b.turn, b.turns)}/${b.turns}`), ` · ${hh}:${mm} ${light} · `, el('b', null, goal)]), el('div', 'bt-l2', wave || (playing ? 'Orders locked.' : '')));
 }
 
@@ -296,6 +304,7 @@ function openMenu() {
     el('div', null, 'Windows let sight and shots through but not people. Someone behind a window is hard to hit. The dead smash them in; a broken window can be climbed or barricaded.'),
     el('div', null, 'Sneak: half speed, and nobody notices the squad until it is close or opens fire. The dead that have not seen you are easier to drop with a head shot, and go down quietly in close combat. Rivals shot from behind (their chevron points where they look) lose heart fast.'),
     el('div', null, 'Wipe out the rivals and they send a fresh column from the north the next turn, one squad bigger each time: one column on easy, two on normal, three on hard. The amber band on the north edge means it is on its way.'),
+    el('div', null, 'In the campaign nothing restocks by itself: a squad inside the refuge or a base you hold can Reabastecer, once a turn, half its ammunition for one supply.'),
     el('div', null, 'Face: tap the side a squad should watch. The arrow at each squad shows it. The rivals see what their men see, and when they spot your men holding a base they send a squad round behind them, sneaking.'),
     el('div', null, 'Scouts that stay still for two seconds in brush or inside a building are set up as snipers: longer range, better aim, and nobody sees them until they are close.'),
     el('div', null, 'Take the town: a base (A to D) is yours after four seconds with your men inside and nobody else, living or dead. Blue outline: yours. Red: theirs. Bases you hold restock your ammunition. Hold all of them through a whole turn to win.'),
