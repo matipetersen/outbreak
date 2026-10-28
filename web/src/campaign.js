@@ -91,6 +91,19 @@ const CP_FEATURES = {
   depot: 'Depósito: tres suministros más por día mientras lo tengas.',
   armory: 'Arsenal: mientras lo tengas, podés armar equipos de ametralladora.',
 };
+// How hard the campaign pushes. Normal is meant to be hard from the first night; easy is the gentler first version.
+// supplies/recruits: to start with; dead: added to the empty districts at the start; cost: supplies every battle takes
+// (without them the company goes in on half ammunition); clear: density and turns of a clearing; rivals: extra squads a
+// faction fields; truce: days a faction needs after a clash; threat/horde: nightly chances; horde_at: how infested a
+// neighbour must be to send a horde; escalate: every so many days the empty districts get worse; first: a horde comes
+// for Florida on the first night.
+const CP_DIFF = {
+  easy: { supplies: 10, recruits: 4, dead: 0, cost: 0, clear: [0.55, 10], rivals: -1, truce: 2, threat: 0.35, horde: 0.3, horde_at: 3, escalate: 0, first: false },
+  normal: { supplies: 6, recruits: 2, dead: 1, cost: 2, clear: [0.6, 8], rivals: 1, truce: 1, threat: 0.5, horde: 0.45, horde_at: 3, escalate: 5, first: true },
+  hard: { supplies: 4, recruits: 1, dead: 1, cost: 3, clear: [0.85, 8], rivals: 2, truce: 1, threat: 0.6, horde: 0.55, horde_at: 2, escalate: 3, first: true },
+};
+const cp_diff = (cs) => CP_DIFF[cs.difficulty] || CP_DIFF.normal;
+
 // Squads are named for the barrios their people come from.
 const CP_CALLS = ['Florida', 'Carapachay', 'La Lucila', 'Villa Adelina', 'Olivos', 'Munro', 'Martelli', 'Boulogne', 'Beccar', 'Victoria', 'Don Torcuato', 'Benavídez'];
 
@@ -111,10 +124,10 @@ function cp_new(cfg) {
   const seed = cfg.seed !== null && cfg.seed !== undefined ? cfg.seed >>> 0 : Math.floor(Math.random() * 1073741824);
   const cs = {
     v: 1, seed, rng: (seed ^ 0xC0A57) >>> 0 || 1, day: 1, zombies: cfg.zombies, difficulty: cfg.difficulty,
-    zones: {}, company: [], next_id: 1, supplies: 10, recruits: 4, rep: { enclave: 0 }, truce: { raiders: 0, military: 0, cult: 0 },
+    zones: {}, company: [], next_id: 1, supplies: CP_DIFF[cfg.difficulty].supplies, recruits: CP_DIFF[cfg.difficulty].recruits, rep: { enclave: 0 }, truce: { raiders: 0, military: 0, cult: 0 },
     threat: null, event: null, op: null, traded: false, log: [], over: null, stats: { battles: 0, won: 0, kills: 0, lost: 0, saved: 0 },
   };
-  for (const [id, [owner, dead]] of Object.entries(CP_START)) cs.zones[id] = { owner, dead, survivors: 0, cache: false };
+  for (const [id, [owner, dead]] of Object.entries(CP_START)) cs.zones[id] = { owner, dead: owner === null && !CP_ZONES.florida.adj.includes(id) ? Math.min(3, dead + CP_DIFF[cfg.difficulty].dead) : dead, survivors: 0, cache: false };   // next door stays as it was: the rest is worse
   for (const type of ['line', 'shield', 'line', 'scout']) cp_add_squad(cs, type);
   cp_log(cs, 'Florida es tuya: el gimnasio de la escuela, el súper, la estación. Pasando Av. Maipú todo es de otro, o de los muertos.');
   return cs;
@@ -190,6 +203,11 @@ function cp_ops(cs) {
   return ops;
 }
 function cp_op_words(cs, op) {
+  const w = cp_op_words_base(cs, op), cost = cp_diff(cs).cost;
+  if (['clear', 'assault', 'defend', 'rescue'].includes(op.kind) && cost) w.sub += cs.supplies >= cost ? ` Cuesta ${cost} suministros.` : ` No te alcanzan los ${cost} suministros: salen con media munición.`;
+  return w;
+}
+function cp_op_words_base(cs, op) {
   const z = op.zone ? CP_ZONES[op.zone] : null, f = op.by && CP_FACTIONS[op.by];
   switch (op.kind) {
     case 'clear': return { title: `Limpiar ${z.name}`, sub: `Recuperar cuatro edificios de los muertos (${['casi ninguno', 'unos pocos', 'muchos', 'una marea'][cs.zones[op.zone].dead]}).${cs.zones[op.zone].cache ? ' Ahí adentro hay un arsenal de la policía.' : ''}` };
@@ -198,7 +216,7 @@ function cp_op_words(cs, op) {
     case 'abandon': return { title: `Abandonar ${z.name}`, sub: 'Sacás a todos. Perdés el barrio, salvás a la compañía. No gasta el día.' };
     case 'rescue': return { title: `Rescate en ${z.name}`, sub: 'Hay gente encerrada en tres casas. Cada uno que saques es un recluta.' };
     case 'trade': return { title: `Comerciar con ${CP_FACTIONS.enclave.name}`, sub: 'Tres suministros a cambio de su buena voluntad. No gasta el día.' };
-    case 'rest': return { title: 'Descansar', sub: 'Hoy no se pelea. Los heridos se recuperan: dos reclutas más.' };
+    case 'rest': return { title: 'Descansar', sub: `Hoy no se pelea. Los heridos se recuperan: dos reclutas más.${cs.zones.florida.dead ? ' En Florida limpian un nivel de muertos.' : ''}` };
     default: return { title: op.kind, sub: '' };
   }
 }
@@ -210,12 +228,12 @@ function cp_battle_cfg(cs, op) {
                 company: cs.company.filter((q) => q.men > 0).map((q) => ({ id: q.id, type: q.type, men: q.men, name: q.name, call: q.call, type_name: CP_TYPES[q.type] })),
                 places: meta.places, refuge_name: meta.refuge, layout: meta.layout };
   const held = (f) => cp_held_by(cs, f).length, left = (f) => Math.max(0, Math.min(2, held(f) - 1));
-  const diff = { easy: -1, normal: 0, hard: 1 }[cs.difficulty] || 0;
-  if (op.kind === 'clear') Object.assign(cfg, { objective: 'take', rivals: 'none', density: 0.55 + 0.3 * z.dead, turns: 10 });
+  const D = cp_diff(cs), diff = D.rivals;
+  if (op.kind === 'clear') Object.assign(cfg, { objective: 'take', rivals: 'none', density: D.clear[0] + 0.3 * z.dead, turns: D.clear[1] });
   // the size of a faction's company follows the territory behind it
   else if (op.kind === 'assault') Object.assign(cfg, { objective: 'take', rivals: op.by, rival_name: CP_FACTIONS[op.by].name, rival_squads: Math.max(2, Math.min(5, 2 + held(op.by) + diff)), reinforcements: left(op.by), density: 0.4 + 0.2 * z.dead });
   else if (op.kind === 'defend' && op.by === 'dead') Object.assign(cfg, { objective: 'hold', turns: 8, density: 0.5 + 0.15 * Math.max(...meta.adj.map((n) => cs.zones[n].dead)) });
-  else if (op.kind === 'defend') Object.assign(cfg, { objective: 'take', rivals: op.by, rival_name: CP_FACTIONS[op.by].name, defend: true, turns: 8, rival_squads: Math.max(2, Math.min(4, 1 + held(op.by) + diff)), reinforcements: Math.min(1, left(op.by)), density: 0.5 });
+  else if (op.kind === 'defend') Object.assign(cfg, { objective: 'take', rivals: op.by, rival_name: CP_FACTIONS[op.by].name, defend: true, turns: 8, rival_squads: Math.max(2, Math.min(4, held(op.by) + (diff < 0 ? 0 : 1))), reinforcements: Math.min(1, left(op.by)), density: 0.5 });
   else if (op.kind === 'rescue') Object.assign(cfg, { objective: 'rescue', density: 0.5 + 0.3 * z.dead });
   return cfg;
 }
@@ -243,13 +261,20 @@ function cp_choose(cs, op) {
   }
   if (op.kind === 'rest') {
     cs.recruits += 2;
-    cp_log(cs, 'Un día sin tiros. Los heridos ya están de pie.');
+    const fl = cs.zones.florida, scar = fl.dead > 0;
+    if (scar) fl.dead--;                                               // a quiet day to clean the streets of home
+    cp_log(cs, `Un día sin tiros. Los heridos ya están de pie.${scar ? ' En Florida limpiaron las calles.' : ''}`);
     cp_end_day(cs);
     return { done: true };
   }
   if (!cs.company.some((q) => q.men > 0)) return { error: 'No tenés a quién mandar. Armá una escuadra primero.' };
   cs.op = Object.assign({}, op);
-  const cfg = cp_battle_cfg(cs, op);
+  const cfg = cp_battle_cfg(cs, op), cost = cp_diff(cs).cost;
+  if (cs.supplies >= cost) cs.supplies -= cost;                        // ammunition and fuel for the day
+  else {
+    for (const q of cfg.company) q.ammo = Math.floor(bt_type_stats('modern', q.type).ammo / 2);
+    cp_log(cs, 'No alcanzan los suministros: la compañía sale con la mitad de la munición.');
+  }
   cs.op.cfg = cfg;
   return { battle: cfg };
 }
@@ -278,7 +303,7 @@ function cp_finish_battle(cs, b) {
     else { z.dead = Math.min(3, z.dead + 1); cp_log(cs, `Te replegaste de ${name}. Con tanto ruido vinieron más.`); }
   } else if (op.kind === 'assault') {
     if (won) {
-      z.owner = 'you'; z.dead = Math.max(0, z.dead - 1); cs.truce[op.by] = Math.max(cs.truce[op.by], cs.day + 2);
+      z.owner = 'you'; z.dead = Math.max(0, z.dead - 1); cs.truce[op.by] = Math.max(cs.truce[op.by], cs.day + cp_diff(cs).truce);
       cp_log(cs, `${name} es tuya. ${f.name} se repliegan a lamerse las heridas.`);
       if (!cp_held_by(cs, op.by).length) cp_log(cs, `${f.name} están liquidados: ya no tienen nada.`);
     } else {
@@ -288,12 +313,10 @@ function cp_finish_battle(cs, b) {
     }
   } else if (op.kind === 'defend') {
     cs.threat = null;
-    if (op.by !== 'dead') cs.truce[op.by] = Math.max(cs.truce[op.by], cs.day + 2);    // win or lose, they need days to come again
+    if (op.by !== 'dead') cs.truce[op.by] = Math.max(cs.truce[op.by], cs.day + cp_diff(cs).truce);
+    else cs.calm = cs.day + 2;                                           // a horde spent: two quiet nights before the next    // win or lose, they need days to come again
     if (won) cp_log(cs, `${name} aguantó.`);
-    else {
-      z.owner = op.by === 'dead' ? null : op.by; if (op.by === 'dead') z.dead = 3;
-      cp_log(cs, `Perdiste ${name}${op.by === 'dead' ? ': ahora es de los muertos' : ` a manos de ${f.name}`}.`);
-    }
+    else cp_lose_zone(cs, op.zone, op.by);
   } else if (op.kind === 'rescue') {
     const n = b ? b.saved || 0 : 0;
     cs.recruits += n; z.survivors = 0;
@@ -303,6 +326,20 @@ function cp_finish_battle(cs, b) {
   if (won) cs.supplies += 2;                                              // what the winners pick up
   cs.op = null;
   cp_end_day(cs);
+}
+
+// A district falls. Florida is home: it is sacked and scarred instead (half the supplies and recruits, one more level of
+// the dead), and only when the dead overrun it is the campaign over.
+function cp_lose_zone(cs, id, by) {
+  const z = cs.zones[id], name = CP_ZONES[id].name;
+  if (id === 'florida') {
+    cs.supplies = Math.floor(cs.supplies / 2); cs.recruits = Math.floor(cs.recruits / 2); z.dead = Math.min(3, z.dead + 1);
+    cp_log(cs, by === 'dead' ? `Los muertos entraron a Florida. La recuperaron calle por calle, pero se perdió la mitad de todo.${z.dead >= 3 ? '' : ` Otra así y no queda nada (${z.dead}/3).`}`
+      : `${CP_FACTIONS[by].name} saquearon Florida: se llevaron la mitad de todo, y en el desorden entraron muertos (${z.dead}/3).`);
+    return;
+  }
+  z.owner = by === 'dead' ? null : by; if (by === 'dead') z.dead = 3;
+  cp_log(cs, `Perdiste ${name}${by === 'dead' ? ': ahora es de los muertos' : ` a manos de ${CP_FACTIONS[by].name}`}.`);
 }
 
 function cp_check_alliance(cs) {
@@ -317,15 +354,15 @@ function cp_check_alliance(cs) {
 function cp_end_day(cs) {
   // a threat nobody answered: they take it
   if (cs.threat) {
-    const t = cs.threat, z = cs.zones[t.zone];
-    z.owner = t.by === 'dead' ? null : t.by; if (t.by === 'dead') z.dead = 3;
-    cp_log(cs, `Nadie salió a defender ${CP_ZONES[t.zone].name}. ${t.by === 'dead' ? 'Ahora es de los muertos.' : `Se la quedaron ${CP_FACTIONS[t.by].name}.`}`);
+    const t = cs.threat;
+    cp_log(cs, `Nadie salió a defender ${CP_ZONES[t.zone].name}.`);
+    cp_lose_zone(cs, t.zone, t.by);
     cs.threat = null;
   }
   if (cp_check_over(cs)) return;
   // what your districts give
   const mine = cp_mine(cs);
-  const supplies = mine.length + (cs.zones.pacheco.owner === 'you' ? 3 : 0), recruits = 1 + Math.floor(mine.length / 3) + (cs.zones.sanfernando.owner === 'you' ? 2 : 0);
+  const supplies = mine.length + (cs.zones.pacheco.owner === 'you' ? 3 : 0), recruits = 1 + Math.floor(mine.length / 2) + (cs.zones.sanfernando.owner === 'you' ? 2 : 0);     // the more barrios, the more people to draw on
   cs.supplies += supplies; cs.recruits += recruits;
   for (const id of Object.keys(cs.zones)) if (cs.zones[id].survivors > 0) cs.zones[id].survivors--;
   // the dead spread out of the worst districts
@@ -335,7 +372,7 @@ function cp_end_day(cs) {
     if (!next.length) continue;
     const n = cp_pick(cs, next), nz = cs.zones[n];
     nz.dead++;
-    if (nz.dead >= 3 && nz.owner && nz.owner !== 'you' && cp_rand(cs) < 0.35) { cp_log(cs, `Los muertos arrasaron ${CP_ZONES[n].name}. ${CP_FACTIONS[nz.owner].name} la perdieron.`); nz.owner = null; }
+    if (nz.dead >= 3 && nz.owner && nz.owner !== 'you' && cp_rand(cs) < 0.25) { cp_log(cs, `Los muertos arrasaron ${CP_ZONES[n].name}. ${CP_FACTIONS[nz.owner].name} la perdieron.`); nz.owner = null; }
   }
   // the factions keep their own streets clean, more or less
   for (const id of Object.keys(cs.zones)) { const z = cs.zones[id]; if (z.owner && z.owner !== 'you' && z.dead > 0 && cp_rand(cs) < 0.5) z.dead--; }
@@ -346,10 +383,10 @@ function cp_end_day(cs) {
     const cand = [...new Set(held.flatMap((id) => CP_ZONES[id].adj))];
     const open = cand.filter((n) => cs.zones[n].owner === null && cs.zones[n].dead <= 1);
     const yours = cand.filter((n) => cs.zones[n].owner === 'you');
-    if (yours.length && !cs.threat && cs.truce[f] < cs.day + 1 && (cp_rand(cs) < 0.35 || !open.length)) {
+    if (yours.length && !cs.threat && cs.truce[f] < cs.day + 1 && (cp_rand(cs) < cp_diff(cs).threat || !open.length)) {
       const t = cp_pick(cs, yours);
       cs.threat = { zone: t, by: f };
-      cp_log(cs, `${CP_FACTIONS[f].name} se están juntando para quedarse con ${CP_ZONES[t].name}. Defendela mañana, o la perdés.${t === 'florida' ? ' Florida es tu casa: si cae, se terminó.' : ''}`);
+      cp_log(cs, `${CP_FACTIONS[f].name} se están juntando para quedarse con ${CP_ZONES[t].name}. Defendela mañana, o la perdés.${t === 'florida' ? ' Si entran a Florida, la saquean.' : ''}`);
     } else if (open.length) {
       const t = cp_pick(cs, open);
       cs.zones[t].owner = f;
@@ -357,15 +394,26 @@ function cp_end_day(cs) {
     }
   }
   // a horde building up next door
-  if (!cs.threat) {
-    const exposed = mine.filter((id) => CP_ZONES[id].adj.some((n) => cs.zones[n].dead >= 3));
-    if (exposed.length && cp_rand(cs) < 0.3) {
+  if (!cs.threat && !(cs.calm > cs.day)) {
+    const exposed = mine.filter((id) => CP_ZONES[id].adj.some((n) => cs.zones[n].dead >= cp_diff(cs).horde_at));
+    if (exposed.length && cp_rand(cs) < cp_diff(cs).horde) {
       const t = cp_pick(cs, exposed);
       cs.threat = { zone: t, by: 'dead' };
       cp_log(cs, `Se está juntando una horda en el borde de ${CP_ZONES[t].name}. Mañana a la noche viene.`);
     }
   }
   cs.day++; cs.traded = false;
+  // the first night: a horde comes up from the General Paz for Florida
+  if (cs.day === 2 && cp_diff(cs).first && !cs.threat) {
+    cs.threat = { zone: 'florida', by: 'dead' };
+    cp_log(cs, 'Una horda sube desde la General Paz, derecho a Florida. Hoy a la noche llega.');
+  }
+  // the outbreak gets worse: every few days the empty districts fill up
+  const esc = cp_diff(cs).escalate;
+  if (esc && cs.day % esc === 0) {
+    for (const z of Object.values(cs.zones)) if (z.owner === null && z.dead < 2) z.dead++;        // the worst only comes from next door
+    cp_log(cs, 'El brote empeora: en los barrios de nadie hay cada vez más muertos.');
+  }
   if (cp_check_over(cs)) return;
   // and something happens that asks you to decide
   if (cp_rand(cs) < 0.6) cp_roll_event(cs);
@@ -374,10 +422,10 @@ function cp_end_day(cs) {
 function cp_check_over(cs) {
   if (cs.over) return true;
   const mine = cp_mine(cs).length, hostiles = CP.HOSTILE.filter((f) => cp_held_by(cs, f).length);
-  if (cs.zones.florida.owner !== 'you') cs.over = { victory: false, title: 'Cayó Florida', text: 'El gimnasio, la estación, la gente que confió en vos. Sin Florida no hay adónde volver.' };
+  if (cs.zones.florida.owner !== 'you' || cs.zones.florida.dead >= 3) cs.over = { victory: false, title: 'Cayó Florida', text: 'El gimnasio, la estación, la gente que confió en vos. Sin Florida no hay adónde volver.' };
   else if (!cs.company.some((q) => q.men > 0) && cs.recruits < 4) cs.over = { victory: false, title: 'No queda nadie', text: 'La compañía ya no existe, y no hay gente para armar otra.' };
   else if (mine >= CP.WIN_ZONES) cs.over = { victory: true, title: 'Zona Norte', text: `${mine} barrios te responden, del río a la Panamericana. No es el mundo que era, pero es tuyo.` };
-  else if (!hostiles.length) cs.over = { victory: true, title: 'No queda contra quién pelear', text: 'Los Segadores, los Milicos y los Renacidos ya no están. Quedan vos, el río y los muertos.' };
+  else if (!hostiles.length && mine >= 5) cs.over = { victory: true, title: 'No queda contra quién pelear', text: 'Los Segadores, los Milicos y los Renacidos ya no están. Quedan vos, el río y los muertos.' };
   if (cs.over) cs.over.summary = cp_summary(cs);
   return !!cs.over;
 }

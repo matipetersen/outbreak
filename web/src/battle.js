@@ -614,7 +614,7 @@ function bt_spawn_zed(b, x, y, special) {
 // Some of the dead are already here when the battle starts.
 function bt_seed_dead(b) {
   const prof = bt_profile(b), n = Math.round((b.objective === 'rescue' ? 16 : b.objective === 'take' ? 12 : 10) * bt_mult(b));
-  if (!b.cfg.defend) for (const q of b.bases) for (let i = 0, k = Math.max(2, Math.round(3 * bt_mult(b))); i < k; i++)            // every base is infested
+  if (!b.cfg.defend) for (const q of b.bases) for (let i = 0, k = Math.max(2, Math.round((b.cfg.rivals === 'none' ? 5 : 3) * bt_mult(b))); i < k; i++)            // every base is infested
     bt_spawn_zed(b, bt_int(b, q.x0, q.x1) + 0.5, bt_int(b, q.y0, q.y1) + 0.5, bt_pick_special(b));
   const day = !bt_dark(b);
   for (let i = 0; i < n; i++) {
@@ -635,7 +635,8 @@ function bt_seed_dead(b) {
 // What comes next turn, and from where: shown to the player while they plan.
 function bt_plan_wave(b) {
   if (b.turn > b.turns) { b.wave = null; return; }
-  const k = b.turn, base = b.objective === 'hold' ? 5.5 + 3.2 * k : b.objective === 'take' ? 2 + 1.2 * k : 3 + 1.8 * k;
+  const clearing = b.objective === 'take' && b.cfg.rivals === 'none';      // nobody else to fight: the dead are all of it
+  const k = b.turn, base = b.objective === 'hold' ? 5.5 + 3.2 * k : clearing ? 5 + 2.6 * k : b.objective === 'take' ? 2 + 1.2 * k : 3 + 1.8 * k;
   let count = Math.max(1, Math.round(base * bt_mult(b)));
   if (b.objective === 'hold' && k === b.turns - 1) count = Math.round(count * 1.6);       // the last big push before dawn
   const prof = bt_profile(b);
@@ -643,8 +644,8 @@ function bt_plan_wave(b) {
   const dayNext = !(hourNext % 24 >= 19.5 || hourNext % 24 < 6);
   const inside = !!prof.sun_burn && dayNext;
   if (inside) count = Math.max(1, Math.round(count * 0.4));          // by day only a few find a way in and wait in the dark
-  const sides = b.objective === 'take' ? [bt_rand(b) < 0.5 ? 'west' : 'east'] : ['north'];
-  if (b.objective === 'take' && k >= 5) sides.push(sides[0] === 'west' ? 'east' : 'west');
+  const sides = clearing ? ['north', bt_rand(b) < 0.5 ? 'west' : 'east'] : b.objective === 'take' ? [bt_rand(b) < 0.5 ? 'west' : 'east'] : ['north'];
+  if (b.objective === 'take' && k >= (clearing ? 3 : 5)) sides.push(sides.includes('west') ? 'east' : 'west');
   if (b.objective !== 'take' && k >= 3) sides.push(bt_rand(b) < 0.5 ? 'west' : 'east');
   if (b.objective !== 'take' && k >= 6 && bt_rand(b) < 0.6) sides.push(sides.includes('west') ? 'east' : 'west');
   const entries = sides.map((side) => ({ side, at: side === 'north' ? bt_int(b, 2, b.w - 3) : b.objective === 'take' ? bt_int(b, 7, b.h - 8) : bt_int(b, 2, Math.floor(b.h * 0.55)) }));
