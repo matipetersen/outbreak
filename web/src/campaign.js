@@ -93,14 +93,14 @@ const CP_FEATURES = {
 };
 // How hard the campaign pushes. Normal is meant to be hard from the first night; easy is the gentler first version.
 // supplies/recruits: to start with; dead: added to the empty districts at the start; cost: supplies every battle takes
-// (without them the company goes in on half ammunition); clear: density and turns of a clearing; rivals: extra squads a
+// (fuel and food; without them nobody goes out that day); clear: density and turns of a clearing; rivals: extra squads a
 // faction fields; truce: days a faction needs after a clash; threat/horde: nightly chances; horde_at: how infested a
 // neighbour must be to send a horde; escalate: every so many days the empty districts get worse; first: a horde comes
 // for Florida on the first night.
 const CP_DIFF = {
   easy: { supplies: 10, recruits: 4, dead: 0, cost: 0, clear: [0.55, 10], rivals: -1, truce: 2, threat: 0.35, horde: 0.3, horde_at: 3, escalate: 0, first: false },
-  normal: { supplies: 6, recruits: 2, dead: 1, cost: 2, clear: [0.6, 8], rivals: 1, truce: 1, threat: 0.5, horde: 0.45, horde_at: 3, escalate: 5, first: true },
-  hard: { supplies: 4, recruits: 1, dead: 1, cost: 3, clear: [0.85, 8], rivals: 2, truce: 1, threat: 0.6, horde: 0.55, horde_at: 2, escalate: 3, first: true },
+  normal: { supplies: 6, recruits: 2, dead: 1, cost: 1, clear: [0.6, 8], rivals: 1, truce: 1, threat: 0.5, horde: 0.45, horde_at: 3, escalate: 5, first: true },
+  hard: { supplies: 4, recruits: 1, dead: 1, cost: 2, clear: [0.85, 8], rivals: 2, truce: 1, threat: 0.6, horde: 0.55, horde_at: 2, escalate: 3, first: true },
 };
 const cp_diff = (cs) => CP_DIFF[cs.difficulty] || CP_DIFF.normal;
 
@@ -150,7 +150,7 @@ function cp_add_squad(cs, type) {
   const used = new Set(cs.company.map((q) => q.call));
   const call = CP_CALLS.find((c) => !used.has(c)) || `Escuadra ${cs.next_id}`;
   const st = bt_type_stats('modern', type);
-  const q = { id: cs.next_id++, type, men: st.men, call, name: `${call} · ${CP_TYPES[type]}` };
+  const q = { id: cs.next_id++, type, men: st.men, ammo: st.ammo, call, name: `${call} · ${CP_TYPES[type]}` };
   cs.company.push(q);
   return q;
 }
@@ -168,6 +168,21 @@ function cp_refill(cs, id) {
   q.men += n; cs.recruits -= n;
   return null;
 }
+// Ammunition is the squad's own: what it does not fire comes back with it. Reloading between battles costs what it costs in
+// the field: one supply for half a load.
+const cp_ammo_max = (q) => bt_type_stats('modern', q.type).ammo;
+const cp_ammo = (q) => (q.ammo === undefined ? cp_ammo_max(q) : q.ammo);
+function cp_reload(cs, id) {
+  const q = cs.company.find((x) => x.id === id);
+  if (!q) return 'Esa escuadra no existe.';
+  if (!cp_ammo_max(q)) return 'Pelean cuerpo a cuerpo: no usan munición.';
+  if (cp_ammo(q) >= cp_ammo_max(q)) return 'Ya tienen la munición completa.';
+  if (cs.supplies < BT_RESTOCK.cost) return 'No hay suministros.';
+  cs.supplies -= BT_RESTOCK.cost;
+  q.ammo = Math.min(cp_ammo_max(q), cp_ammo(q) + Math.ceil(cp_ammo_max(q) * BT_RESTOCK.share));
+  return null;
+}
+
 // Raise a new squad: recruits for every man, and supplies for their weapons. Machine guns need the armoury.
 function cp_raise_cost(type) { return { recruits: BT_TYPES[type].men, supplies: BT_ARMY.cost[type] * 2 }; }
 function cp_raise(cs, type) {
@@ -204,7 +219,7 @@ function cp_ops(cs) {
 }
 function cp_op_words(cs, op) {
   const w = cp_op_words_base(cs, op), cost = cp_diff(cs).cost;
-  if (['clear', 'assault', 'defend', 'rescue'].includes(op.kind) && cost) w.sub += cs.supplies >= cost ? ` Cuesta ${cost} suministros.` : ` No te alcanzan los ${cost} suministros: salen con media munición.`;
+  if (['clear', 'assault', 'defend', 'rescue'].includes(op.kind) && cost) w.sub += cs.supplies >= cost ? ` Cuesta ${cost === 1 ? 'un suministro' : `${cost} suministros`} de nafta y comida.` : ` Sin ${cost === 1 ? 'un suministro' : `${cost} suministros`} no sale nadie.`;
   return w;
 }
 function cp_op_words_base(cs, op) {
@@ -225,7 +240,7 @@ function cp_op_words_base(cs, op) {
 function cp_battle_cfg(cs, op) {
   const zid = op.zone, z = cs.zones[zid], meta = CP_ZONES[zid];
   const cfg = { era: 'modern', zombies: cs.zombies, difficulty: cs.difficulty, seed: Math.floor(cp_rand(cs) * 1073741824), campaign: true, zone: zid, op: op.kind,
-                company: cs.company.filter((q) => q.men > 0).map((q) => ({ id: q.id, type: q.type, men: q.men, name: q.name, call: q.call, type_name: CP_TYPES[q.type] })),
+                company: cs.company.filter((q) => q.men > 0).map((q) => ({ id: q.id, type: q.type, men: q.men, ammo: cp_ammo(q), name: q.name, call: q.call, type_name: CP_TYPES[q.type] })),
                 places: meta.places, refuge_name: meta.refuge, layout: meta.layout };
   const held = (f) => cp_held_by(cs, f).length, left = (f) => Math.max(0, Math.min(2, held(f) - 1));
   const D = cp_diff(cs), diff = D.rivals;
@@ -268,13 +283,10 @@ function cp_choose(cs, op) {
     return { done: true };
   }
   if (!cs.company.some((q) => q.men > 0)) return { error: 'No tenés a quién mandar. Armá una escuadra primero.' };
+  if (cs.supplies < cp_diff(cs).cost) return { error: `Sin ${cp_diff(cs).cost === 1 ? 'un suministro' : `${cp_diff(cs).cost} suministros`} para nafta y comida no sale nadie. Descansá: tus barrios producen esta noche.` };
   cs.op = Object.assign({}, op);
   const cfg = cp_battle_cfg(cs, op), cost = cp_diff(cs).cost;
-  if (cs.supplies >= cost) cs.supplies -= cost;                        // ammunition and fuel for the day
-  else {
-    for (const q of cfg.company) q.ammo = Math.floor(bt_type_stats('modern', q.type).ammo / 2);
-    cp_log(cs, 'No alcanzan los suministros: la compañía sale con la mitad de la munición.');
-  }
+  cs.supplies -= cost;                                                 // fuel and food for the day
   cfg.paid_restock = true; cfg.supplies = cs.supplies;                 // restocking in the field comes out of what is left
   cs.op.cfg = cfg;
   return { battle: cfg };
@@ -294,7 +306,7 @@ function cp_finish_battle(cs, b) {
       const q = cs.company.find((x) => x.id === s.cid);
       if (!q) continue;
       cs.stats.lost += q.men - s.men.length;
-      q.men = s.men.length;
+      q.men = s.men.length; q.ammo = s.ammo;                            // what was not fired comes back
     }
   }
   for (const q of cs.company.filter((x) => x.men <= 0)) cp_log(cs, `${q.name} ya no existe. No volvió nadie.`);

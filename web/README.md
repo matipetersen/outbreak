@@ -76,7 +76,8 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
   shield squad 3, heavy weapon 4, scouts 2. Each objective offers a standard company to start from; the choice is kept for
   the next battle and stored in the save. The first squads take the posts nearest the danger.
 * **Orders**: tap a squad (or its card), then tap a tile or drag a route; *Fire at will* / *Hold fire*; *Walk* / *Run*
-  (nobody shoots while running); one special action: shield squads build a barricade (four quiet seconds, four per
+  (nobody shoots while running); *Melee* instead of shooting (no ammunition, no shots: with no route the squad closes in on
+  the nearest enemy it can see, and blows count even against the head-shot dead); one special action: shield squads build a barricade (four quiet seconds, four per
   battle), scouts throw a lure that calls the dead for two turns. Orders carry over between turns.
 * **Squads** come from the era (longbowmen and Greek fire in 1348, M16s and an M60 in 1986, pulse rifles in the station).
   Every shot is noise and noise brings the dead; accuracy falls with range; in the dark you see and shoot five tiles.
@@ -132,11 +133,13 @@ Engine: `src/campaign.js` (pure and deterministic like a battle, saved under `ou
   Reborn's preachers, medicine for the Unicenter, a horde coming down Libertador that you can meet, block or lead into a
   rival's district, a signal from a rooftop, deserters, a police armoury. Each choice moves something on the map.
 * **Hard from the first night** (`CP_DIFF`; normal is meant to be hard, easy is the gentler first version): a horde comes for
-  Florida the first night; every battle costs two supplies (without them, half ammunition); you start with six supplies and
+  Florida the first night; every battle costs a supply of fuel and food (without it nobody goes out; resting is free); you start with six supplies and
   two recruits; districts away from Florida start more infested and the empty ones get worse every five days; clearing a
   district is a real fight (bigger waves from three sides, more dead inside); factions field an extra squad and come back
   after a day. Losing a defence of Florida does not end it: home is sacked (half the supplies and recruits) and scarred (one
   level of the dead; a rest day cleans one).
+* **Ammunition is the squad's own**: what it does not fire comes back to the campaign with it, and goes into the next fight;
+  reloading between battles (Reorganizar) costs one supply for half a load. A squad with none left fights hand to hand.
 * **Restocking in the field is paid and optional**: in a campaign battle nothing restocks by itself. A squad inside the
   refuge or a base you hold can *Reabastecer* during the plan phase, once a turn: half its ammunition for one of the
   campaign's supplies (what is left after the day's cost travels with the battle, and what you spend is taken off after it).

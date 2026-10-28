@@ -185,7 +185,8 @@ function renderPanel() {
   if (s && s.men.length) {
     const row = el('div', 'bt-row');
     row.append(btn('bt-seg' + (s.stance === 'fire' ? ' on' : ''), 'Fire at will', () => { bt_set(b, s.id, { stance: 'fire' }); renderPanel(); }),
-      btn('bt-seg' + (s.stance === 'hold' ? ' on' : ''), 'Hold fire', () => { bt_set(b, s.id, { stance: 'hold' }); renderPanel(); }));
+      btn('bt-seg' + (s.stance === 'hold' ? ' on' : ''), 'Hold fire', () => { bt_set(b, s.id, { stance: 'hold' }); renderPanel(); }),
+      btn('bt-seg' + (s.stance === 'melee' ? ' on' : ''), 'Melee', () => { bt_set(b, s.id, { stance: 'melee' }); renderPanel(); }));
     row.append(el('span', 'bt-gap'));
     row.append(btn('bt-seg' + (s.pace === 'walk' ? ' on' : ''), 'Walk', () => { bt_set(b, s.id, { pace: 'walk' }); renderPanel(); }),
       btn('bt-seg' + (s.pace === 'run' ? ' on' : ''), 'Run', () => { bt_set(b, s.id, { pace: 'run' }); renderPanel(); }),
@@ -296,7 +297,7 @@ function openMenu() {
   box.append(el('h2', 'end-title', 'Orders'), el('div', 'sum', [
     el('div', null, 'Each turn: give orders, then EXECUTE. Ten seconds of battle play out and you cannot intervene.'),
     el('div', null, 'Tap a squad, then tap a tile to send it there, or drag a route from it. Orders carry over to the next turn.'),
-    el('div', null, 'Fire at will kills, but every shot is noise and noise brings the dead. Hold fire to stay quiet.'),
+    el('div', null, 'Fire at will kills, but every shot is noise and noise brings the dead. Hold fire to stay quiet. Melee: no ammunition, no shots; with no route the squad closes in on the nearest enemy it can see and each man goes for the closest one. Blows always count, even against the dead that only die to a head shot. A squad out of ammunition fights like this anyway.'),
     el('div', null, 'Running is fast, but nobody shoots while running. Machine guns need a moment to set up.'),
     el('div', null, 'Morale falls when men die or the dead swarm a squad. A broken squad runs for safety until it rallies.'),
     el('div', null, 'Red arrows: where the dead you can see are heading. Red edge marks: where the next wave comes in.'),
