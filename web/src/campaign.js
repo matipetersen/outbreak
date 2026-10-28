@@ -312,6 +312,7 @@ function cp_finish_battle(cs, b) {
   for (const q of cs.company.filter((x) => x.men <= 0)) cp_log(cs, `${q.name} ya no existe. No volvió nadie.`);
   cs.company = cs.company.filter((q) => q.men > 0);
   const f = op.by && CP_FACTIONS[op.by];
+  let pyrrhic = false;
   if (op.kind === 'clear') {
     if (won) { z.owner = 'you'; z.dead = 0; cp_log(cs, `${name} es tuya.${z.cache ? ' En el arsenal de la policía había munición: ocho suministros.' : ''}`); if (z.cache) { cs.supplies += 8; z.cache = false; } }
     else { z.dead = Math.min(3, z.dead + 1); cp_log(cs, `Te replegaste de ${name}. Con tanto ruido vinieron más.`); }
@@ -329,7 +330,8 @@ function cp_finish_battle(cs, b) {
     cs.threat = null;
     if (op.by !== 'dead') cs.truce[op.by] = Math.max(cs.truce[op.by], cs.day + cp_diff(cs).truce);
     else cs.calm = cs.day + 2;                                           // a horde spent: two quiet nights before the next    // win or lose, they need days to come again
-    if (won) cp_log(cs, `${name} aguantó.`);
+    if (won && op.by === 'dead') pyrrhic = cp_held_refuge(cs, op.zone, b) === 'barely';
+    else if (won) cp_log(cs, `${name} aguantó.`);
     else cp_lose_zone(cs, op.zone, op.by);
   } else if (op.kind === 'rescue') {
     const n = b ? b.saved || 0 : 0;
@@ -337,9 +339,33 @@ function cp_finish_battle(cs, b) {
     cp_log(cs, n ? `Sacaste a ${n} de ${name}. Quieren pelear.` : `De ${name} no salió nadie con vida.`);
     if (won) { cs.rep.enclave += 1; cp_check_alliance(cs); }
   }
-  if (won) cs.supplies += 2;                                              // what the winners pick up
+  if (won && !pyrrhic) cs.supplies += 2;                                // what the winners pick up (nothing, after a night like that)
   cs.op = null;
   cp_end_day(cs);
+}
+
+// The refuge held against the dead, but how well. A win on the clock with the dead already inside is not the same
+// night as a clean one: the people who were in there pay for it, and so does the barrio.
+function cp_held_refuge(cs, id, b) {
+  const z = cs.zones[id], name = CP_ZONES[id].name;
+  const m = b && b.refuge ? bt_hold_margin(b) : { margin: 'clean', inside: 0, integrity: 100 };
+  const pct = Math.round(m.integrity), refuge = CP_ZONES[id].refuge || 'El refugio';
+  if (m.margin === 'clean') { cp_log(cs, `${name} aguantó entera: ${refuge} amaneció con ${pct}% en pie.`); return m.margin; }
+  if (m.margin === 'costly') {
+    const sup = Math.min(cs.supplies, 2), rec = m.inside ? Math.min(cs.recruits, 1) : 0;
+    cs.supplies -= sup; cs.recruits -= rec;
+    cp_log(cs, `${name} aguantó, pero golpeada: ${refuge} quedó al ${pct}%${m.inside ? ` y al amanecer había ${m.inside} muertos adentro` : ''}. `
+      + `Arreglarlo costó ${sup} suministros${rec ? ', y uno de los que estaban adentro no la contó' : ''}.`);
+    return m.margin;
+  }
+  // barely: one more turn and everybody inside was dead. It held on the clock, not on its own.
+  const sup = Math.min(cs.supplies, 3), rec = Math.min(cs.recruits, Math.max(1, Math.ceil(cs.recruits / 3)));
+  cs.supplies -= sup; cs.recruits -= rec;
+  z.dead = Math.min(2, z.dead + 1);                                     // scarred, but a night that held does not lose the barrio (nor end the campaign)
+  cp_log(cs, `${name} aguantó de milagro. Cuando salió el sol había ${m.inside ? `${m.inside} muertos adentro` : 'más agujeros que paredes'} (${refuge}, al ${pct}%): `
+    + `un rato más y no quedaba nadie.${m.inside ? ' Los sacaron a cuchillo, sala por sala.' : ''} ${rec === 1 ? 'Murió uno' : `Murieron ${rec}`} de los que se habían refugiado, `
+    + `se perdieron ${sup} suministros y el barrio quedó marcado (muertos ${z.dead}/3). No hay botín de una noche así.`);
+  return m.margin;
 }
 
 // A district falls. Florida is home: it is sacked and scarred instead (half the supplies and recruits, one more level of

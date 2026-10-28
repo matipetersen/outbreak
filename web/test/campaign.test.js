@@ -246,3 +246,31 @@ const fakeBattle = (cs, victory, losses = 0) => ({ over: { victory }, kills: 5, 
   assert(Math.hypot(s.anchor[0] - start[0], s.anchor[1] - start[1]) > 0.5 || !b.zeds.includes(z), 'they went for it');
 }
 console.log('campaign tests passed');
+{ // a defence against the dead that held on the clock is graded: clean, costly, or by a hair (the dead already inside)
+  const hold = (seed, integrity, inside) => {
+    const cs = mk({ seed }); cs.threat = { zone: 'florida', by: 'dead' }; cs.supplies = 10; cs.recruits = 6;
+    const r = OB.cp_choose(cs, { kind: 'defend', zone: 'florida' });
+    const b = OB.bt_new(r.battle), R = b.refuge;
+    b.zeds = []; for (let i = 0; i < inside; i++) b.zeds.push({ x: R.x0 + 0.5, y: R.y0 + 0.5, hp: 1 });
+    R.integrity = integrity; b.turn = b.turns; OB.bt_check_over(b, true);
+    assert(b.over && b.over.victory);
+    const sup = cs.supplies, rec = cs.recruits, dead = cs.zones.florida.dead;
+    OB.cp_finish_battle(cs, b);
+    return { cs, b, sup, rec, dead };
+  };
+  const clean = hold(1, 90, 0);
+  assert.strictEqual(clean.b.over.margin, 'clean'); assert(clean.cs.log.some((l) => /aguantó entera/.test(l.text)));
+  const costly = hold(1, 50, 1);
+  assert.strictEqual(costly.b.over.margin, 'costly'); assert(costly.cs.log.some((l) => /golpeada/.test(l.text)));
+  const bare = hold(1, 8, 3);
+  assert.strictEqual(bare.b.over.margin, 'barely'); assert(/barely/.test(bare.b.over.title) && /3 of the dead inside/.test(bare.b.over.text));
+  assert(bare.cs.log.some((l) => /de milagro/.test(l.text) && /3 muertos adentro \(Gimnasio de la escuela, al 8%\)/.test(l.text)), 'the campaign says what happened');
+  assert(bare.cs.zones.florida.dead === bare.dead + 1 && !bare.cs.over, 'Florida is scarred, but the campaign goes on');
+  // the same night, held cleanly, leaves more behind than the one held by a hair
+  assert(bare.cs.recruits < clean.cs.recruits && bare.cs.supplies < clean.cs.supplies);
+  const worst = (() => { const cs = mk({ seed: 1 }); cs.zones.florida.dead = 2; cs.threat = { zone: 'florida', by: 'dead' };
+    const b = OB.bt_new(OB.cp_choose(cs, { kind: 'defend', zone: 'florida' }).battle); b.zeds = []; b.refuge.integrity = 5; b.turn = b.turns; OB.bt_check_over(b, true);
+    OB.cp_finish_battle(cs, b); return cs; })();
+  assert(!worst.over && worst.zones.florida.dead === 2, 'a night that held never ends the campaign by itself');
+}
+

@@ -138,6 +138,12 @@ Engine: `src/campaign.js` (pure and deterministic like a battle, saved under `ou
   district is a real fight (bigger waves from three sides, more dead inside); factions field an extra squad and come back
   after a day. Losing a defence of Florida does not end it: home is sacked (half the supplies and recruits) and scarred (one
   level of the dead; a rest day cleans one).
+* **A night held is graded**: a Hold that reaches the last turn is won, but how it was won follows you. *Clean* (no dead
+  inside, the refuge at 60% or more) costs nothing. *Costly* (the dead got in, or the refuge is under 60%) costs two supplies
+  of repairs and, if the dead were inside, one recruit. *By a hair* (the dead inside would have finished the refuge within
+  one more turn, or it is under 25%) costs three supplies, a third of the recruits, a level of the dead in the district
+  (never past 2: a night that held never loses the barrio by itself) and the spoils of victory. The battle screen says
+  "The night held, barely" and how many seconds were left.
 * **Ammunition is the squad's own**: what it does not fire comes back to the campaign with it, and goes into the next fight;
   reloading between battles (Reorganizar) costs one supply for half a load. A squad with none left fights hand to hand.
 * **Restocking in the field is paid and optional**: in a campaign battle nothing restocks by itself. A squad inside the

@@ -1513,8 +1513,23 @@ function bt_check_over(b, endOfTurn) {
     if (b.turn >= b.turns) return mine > theirs ? win('The bigger share', `You hold ${mine} of ${n}; ${bt_rival_name(b)} hold ${theirs}.`)
       : lose(mine === theirs ? 'A stalemate' : 'Outplayed', `You hold ${mine} of ${n}; ${bt_rival_name(b)} hold ${theirs}.${mine === theirs ? ' Nobody can call the town theirs, and you needed to.' : ''}`);
   } else if (endOfTurn && b.turn >= b.turns) {
-    return win('The night held', `${cap(bt_refuge_name(b))} stood until morning, ${Math.round(b.refuge.integrity)}% intact.`);
+    const m = bt_hold_margin(b), where = cap(bt_refuge_name(b)), pct = Math.round(b.refuge.integrity);
+    if (m.margin === 'barely') win('The night held, barely', `${where} stood until morning, ${pct}% intact, with ${m.inside ? `${m.inside} of the dead inside it` : 'nothing left of the walls'}. ${m.inside ? `At that rate it would have fallen within ${m.secs < 1 ? 'a second' : `${Math.ceil(m.secs)} seconds`}.` : 'One more push and it was gone.'}`);
+    else if (m.margin === 'costly') win('The night held', `${where} stood until morning, but only ${pct}% of it${m.inside ? `, and ${m.inside} of the dead were inside at dawn` : ''}.`);
+    else win('The night held', `${where} stood until morning, ${pct}% intact.`);
+    b.over.margin = m.margin; b.over.inside = m.inside;
+    return;
   }
+}
+
+// How close a held refuge came to falling: the dead inside it at the end, and how long it would have lasted with them there.
+// 'barely' when it would not have survived another turn (or is almost rubble), 'costly' when the dead got in or half of it is gone.
+function bt_hold_margin(b) {
+  let inside = 0;
+  for (const z of b.zeds) if (bt_in_refuge(b, Math.floor(z.x), Math.floor(z.y))) inside++;
+  const I = b.refuge.integrity, secs = inside ? I / (inside * 0.6) : Infinity, turn = BT.TURN_TICKS * BT.DT;
+  const margin = secs <= turn || I < 25 ? 'barely' : inside || I < 60 ? 'costly' : 'clean';
+  return { margin, inside, secs, integrity: I };
 }
 
 function bt_summary(b) {
@@ -1529,7 +1544,10 @@ function bt_summary(b) {
     lines.push('Bases: ' + b.bases.map((q) => `${q.letter} ${q.name} (${q.owner === 'you' ? 'yours' : q.owner === 'rival' ? 'theirs' : 'nobody'})`).join(', ') + '.');
   }
   if (b.turned) lines.push(`${b.turned} of your own turned.`);
-  if (b.refuge) lines.push(`Refuge: ${Math.round(b.refuge.integrity)}% intact.`);
+  if (b.refuge) {
+    const m = bt_hold_margin(b);
+    lines.push(`Refuge: ${Math.round(b.refuge.integrity)}% intact${m.inside ? `, ${m.inside} of the dead inside` : ''}.`);
+  }
   if (b.civ_total) lines.push(`Survivors brought out: ${b.saved} of ${b.civ_total}.`);
   return lines;
 }
