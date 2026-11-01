@@ -82,7 +82,7 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
   with a longer reach, a quarter harder, and the dead land a fifth fewer bites on a squad standing still); *Retreat* (the squad
   runs back to the refuge, else the nearest base you hold, else your own edge of the map, and turns to face what it left;
   Walk after it makes it a fighting withdrawal); one special action: shield squads build a barricade (four quiet seconds, four per
-  battle), scouts throw a lure that calls the dead for two turns. Orders carry over between turns.
+  battle; it stops the dead until they break it, and the living climb over it slowly, so it never walls your own men in), scouts throw a lure that calls the dead for two turns. Orders carry over between turns.
 * **Squads** come from the era (longbowmen and Greek fire in 1348, M16s and an M60 in 1986, pulse rifles in the station).
   Every shot is noise and noise brings the dead; accuracy falls with range; in the dark you see and shoot five tiles.
   Morale falls with losses and when the dead swarm a squad; a broken squad runs for safety until it rallies.

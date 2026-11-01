@@ -141,12 +141,14 @@ function bt_tile(b, x, y) { return bt_in(b, x, y) ? b.tiles[y * b.w + x] : BTILE
 const bt_blocks_sight = (t) => t === BTILE.WALL || t === BTILE.TREE;
 const bt_indoor = (t) => t === BTILE.FLOOR || t === BTILE.DOOR;
 function bt_has_barricade(b, k) { return b.barricades[k] !== undefined; }
+// The door the survivors nailed shut from inside: nobody comes through it until they tear it down themselves.
+function bt_sealed(b, k) { return (b.houses || []).some((h) => !h.open && bt_idx(b, h.door[0], h.door[1]) === k); }
 
 // Movement cost of a tile for the living ('h') or the dead ('z'); Infinity = cannot enter.
 function bt_cost(b, k, who) {
   const t = b.tiles[k];
   if (t === BTILE.WALL || t === BTILE.TREE || t === BTILE.WATER) return Infinity;
-  if (bt_has_barricade(b, k)) return who === 'z' ? 14 : Infinity;
+  if (bt_has_barricade(b, k)) return who === 'z' ? 14 : bt_sealed(b, k) ? Infinity : 4;   // the living climb over, slowly; the dead have to break it
   if (t === BTILE.WINDOW) return who === 'z' ? 10 : Infinity;
   if (t === BTILE.BROKEN) return who === 'h' ? 3 : 2;               // climbing through what is left of it
   if (t === BTILE.FENCE) return who === 'h' ? 3 : (b.swarm ? 2.5 : Infinity);
@@ -163,7 +165,7 @@ function bt_passable(b, x, y, who) {
   const tx = Math.floor(x), ty = Math.floor(y);
   if (!bt_in(b, tx, ty)) return false;
   const k = bt_idx(b, tx, ty);
-  if (bt_has_barricade(b, k) || b.tiles[k] === BTILE.WINDOW) return false;
+  if ((who !== 'h' && bt_has_barricade(b, k)) || b.tiles[k] === BTILE.WINDOW) return false;
   return bt_cost(b, k, who) !== Infinity;
 }
 
