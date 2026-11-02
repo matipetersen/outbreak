@@ -141,12 +141,14 @@ function bt_tile(b, x, y) { return bt_in(b, x, y) ? b.tiles[y * b.w + x] : BTILE
 const bt_blocks_sight = (t) => t === BTILE.WALL || t === BTILE.TREE;
 const bt_indoor = (t) => t === BTILE.FLOOR || t === BTILE.DOOR;
 function bt_has_barricade(b, k) { return b.barricades[k] !== undefined; }
+// The door the survivors nailed shut from inside: nobody comes through it until they tear it down themselves.
+function bt_sealed(b, k) { return (b.houses || []).some((h) => !h.open && bt_idx(b, h.door[0], h.door[1]) === k); }
 
 // Movement cost of a tile for the living ('h') or the dead ('z'); Infinity = cannot enter.
 function bt_cost(b, k, who) {
   const t = b.tiles[k];
   if (t === BTILE.WALL || t === BTILE.TREE || t === BTILE.WATER) return Infinity;
-  if (bt_has_barricade(b, k)) return who === 'z' ? 14 : Infinity;
+  if (bt_has_barricade(b, k)) return who === 'z' ? 14 : bt_sealed(b, k) ? Infinity : 4;   // the living climb over, slowly; the dead have to break it
   if (t === BTILE.WINDOW) return who === 'z' ? 10 : Infinity;
   if (t === BTILE.BROKEN) return who === 'h' ? 3 : 2;               // climbing through what is left of it
   if (t === BTILE.FENCE) return who === 'h' ? 3 : (b.swarm ? 2.5 : Infinity);
@@ -163,7 +165,7 @@ function bt_passable(b, x, y, who) {
   const tx = Math.floor(x), ty = Math.floor(y);
   if (!bt_in(b, tx, ty)) return false;
   const k = bt_idx(b, tx, ty);
-  if (bt_has_barricade(b, k) || b.tiles[k] === BTILE.WINDOW) return false;
+  if ((who !== 'h' && bt_has_barricade(b, k)) || b.tiles[k] === BTILE.WINDOW) return false;
   return bt_cost(b, k, who) !== Infinity;
 }
 
@@ -727,7 +729,7 @@ function bt_walk_line(b, a, c) {
 function bt_set(b, squad_id, opts) {
   const s = bt_squad(b, squad_id);
   if (!s || b.phase !== 'plan') return false;
-  if (opts.stance === 'fire' || opts.stance === 'hold' || opts.stance === 'melee') s.stance = opts.stance;
+  if (['fire', 'hold', 'melee', 'guard'].includes(opts.stance)) s.stance = opts.stance;
   if (opts.pace === 'walk' || opts.pace === 'run' || opts.pace === 'sneak') s.pace = opts.pace;
   return true;
 }
@@ -824,6 +826,31 @@ function bt_rival_orders(b) {
 }
 
 // Which way a squad standing still is looking (plan phase): the side it guards. Shots from behind it hurt it most.
+// Fall back: to the refuge, else the nearest base you hold, else your own edge of the map, straight behind the squad.
+// They run (nobody shoots while running; pick Walk after it for a fighting withdrawal) and turn to face what they left.
+function bt_retreat_goal(b, s) {
+  const here = [s.anchor[0], s.anchor[1]], centre = (q) => [(q.x0 + q.x1 + 1) / 2, (q.y0 + q.y1 + 1) / 2];
+  if (b.refuge && !bt_in_refuge(b, Math.floor(here[0]), Math.floor(here[1]))) return centre(b.refuge);
+  const held = (b.bases || []).filter((q) => q.owner === 'you' && !(here[0] >= q.x0 && here[0] < q.x1 + 1 && here[1] >= q.y0 && here[1] < q.y1 + 1))
+    .sort((p, q) => dist(centre(p), here) - dist(centre(q), here) || p.letter.localeCompare(q.letter));
+  if (held.length) return centre(held[0]);
+  if (here[1] < b.h - 3) return [here[0], b.h - 1.5];
+  return null;
+}
+function bt_retreat(b, squad_id) {
+  const s = bt_squad(b, squad_id);
+  if (!s || !bt_alive(b, s) || b.phase !== 'plan' || !bt_mine(s)) return 'Not now.';
+  if (s.state === 'broken') return 'They are already running.';
+  const goal = bt_retreat_goal(b, s);
+  if (!goal) return 'Nowhere safer to fall back to.';
+  const from = [s.anchor[0], s.anchor[1]];
+  if (!bt_order_move(b, s.id, [goal])) return 'No way back from here.';
+  s.pace = 'run'; s.ability = null;
+  const end = s.path[s.path.length - 1], dx = from[0] - end[0], dy = from[1] - end[1], d = Math.hypot(dx, dy);
+  if (d > 0.3) s.face_to = [dx / d, dy / d];
+  return null;
+}
+
 function bt_face(b, squad_id, x, y) {
   const s = bt_squad(b, squad_id);
   if (!s || b.phase !== 'plan' || !bt_mine(s)) return false;
@@ -1006,17 +1033,18 @@ function bt_men_step(b, grid, fx) {
       const speed = bt_pace_speed(broken ? 'run' : s.pace) * st.speed * 1.3 * bt_speed_factor(b, m.x, m.y, 'h');
       bt_move(b, m, tx, ty, speed * BT.DT, 'h');
       m.cd -= BT.DT; m.mcd -= BT.DT;
-      // close combat first: whatever has its hands on you
-      const close = bt_near_zeds(b, grid, m.x, m.y, 0.75);
+      // close combat first: whatever has its hands on you. Holding ground, a man in his place in the line strikes first and harder
+      const braced = s.stance === 'guard' && !broken && Math.hypot(m.x - tx, m.y - ty) < 0.6, reachHand = braced ? 1.0 : 0.75;
+      const close = bt_near_zeds(b, grid, m.x, m.y, reachHand);
       if (close.length && m.mcd <= 0) {
         const z = close[0][1];
-        const dmg = bt_int(b, st.melee[0], st.melee[1]) * (z.special && CONTENT.specials[z.special].flags.includes('tough') ? 0.7 : 1) * (z.tgt === null ? 3 : 1);   // one that never saw it coming goes down quietly
+        const dmg = bt_int(b, st.melee[0], st.melee[1]) * (z.special && CONTENT.specials[z.special].flags.includes('tough') ? 0.7 : 1) * (z.tgt === null ? 3 : 1) * (braced ? 1.25 : 1);   // one that never saw it coming goes down quietly
         bt_hurt_zed(b, z, dmg, s, fx);
         m.mcd = 0.9;
         return;
       }
-      if (m.mcd <= 0 && (s.stance === 'melee' || st.range <= 0 || s.ammo <= 0)) {      // knives and rifle butts against the other company
-        const e = foes.find((f) => f.hp > 0 && Math.hypot(f.x - m.x, f.y - m.y) < 0.75);
+      if (m.mcd <= 0 && (s.stance === 'melee' || s.stance === 'guard' || st.range <= 0 || s.ammo <= 0)) {      // knives and rifle butts against the other company
+        const e = foes.find((f) => f.hp > 0 && Math.hypot(f.x - m.x, f.y - m.y) < reachHand);
         if (e) { bt_shoot_man(b, e, bt_int(b, st.melee[0], st.melee[1]), s, fx, bt_unaware(b, e, m)); m.mcd = 0.9; return; }
       }
       if (broken || s.stance !== 'fire' || st.range <= 0 || s.ammo <= 0 || m.cd > 0 || runningNow) return;
@@ -1276,7 +1304,7 @@ function bt_zeds_step(b, grid, fx) {
       if (z.cd <= 0) {
         z.cd = prof.speed >= 1.2 ? 0.7 : 1.0;
         const s = reach.kind === 'man' ? bt_squad(b, reach.squad) : null;
-        const armor = s ? bt_type_stats(b.era, s.type).armor : 1;
+        const armor = s ? bt_type_stats(b.era, s.type).armor * (s.stance === 'guard' && s.state !== 'broken' && !s.moving ? 0.8 : 1) : 1;   // a line that holds is harder to pull a man out of
         if (bt_rand(b) < (sp.acc / 100) * armor) {
           bt_hurt_living(b, reach, bt_int(b, sp.dmg[0], sp.dmg[1]) * diff.damage * 0.8, fx, z);
           if (reach.hp > 0 && bt_rand(b) < prof.infect) bt_infect(b, reach, fx);
@@ -1513,8 +1541,23 @@ function bt_check_over(b, endOfTurn) {
     if (b.turn >= b.turns) return mine > theirs ? win('The bigger share', `You hold ${mine} of ${n}; ${bt_rival_name(b)} hold ${theirs}.`)
       : lose(mine === theirs ? 'A stalemate' : 'Outplayed', `You hold ${mine} of ${n}; ${bt_rival_name(b)} hold ${theirs}.${mine === theirs ? ' Nobody can call the town theirs, and you needed to.' : ''}`);
   } else if (endOfTurn && b.turn >= b.turns) {
-    return win('The night held', `${cap(bt_refuge_name(b))} stood until morning, ${Math.round(b.refuge.integrity)}% intact.`);
+    const m = bt_hold_margin(b), where = cap(bt_refuge_name(b)), pct = Math.round(b.refuge.integrity);
+    if (m.margin === 'barely') win('The night held, barely', `${where} stood until morning, ${pct}% intact, with ${m.inside ? `${m.inside} of the dead inside it` : 'nothing left of the walls'}. ${m.inside ? `At that rate it would have fallen within ${m.secs < 1 ? 'a second' : `${Math.ceil(m.secs)} seconds`}.` : 'One more push and it was gone.'}`);
+    else if (m.margin === 'costly') win('The night held', `${where} stood until morning, but only ${pct}% of it${m.inside ? `, and ${m.inside} of the dead were inside at dawn` : ''}.`);
+    else win('The night held', `${where} stood until morning, ${pct}% intact.`);
+    b.over.margin = m.margin; b.over.inside = m.inside;
+    return;
   }
+}
+
+// How close a held refuge came to falling: the dead inside it at the end, and how long it would have lasted with them there.
+// 'barely' when it would not have survived another turn (or is almost rubble), 'costly' when the dead got in or half of it is gone.
+function bt_hold_margin(b) {
+  let inside = 0;
+  for (const z of b.zeds) if (bt_in_refuge(b, Math.floor(z.x), Math.floor(z.y))) inside++;
+  const I = b.refuge.integrity, secs = inside ? I / (inside * 0.6) : Infinity, turn = BT.TURN_TICKS * BT.DT;
+  const margin = secs <= turn || I < 25 ? 'barely' : inside || I < 60 ? 'costly' : 'clean';
+  return { margin, inside, secs, integrity: I };
 }
 
 function bt_summary(b) {
@@ -1529,7 +1572,10 @@ function bt_summary(b) {
     lines.push('Bases: ' + b.bases.map((q) => `${q.letter} ${q.name} (${q.owner === 'you' ? 'yours' : q.owner === 'rival' ? 'theirs' : 'nobody'})`).join(', ') + '.');
   }
   if (b.turned) lines.push(`${b.turned} of your own turned.`);
-  if (b.refuge) lines.push(`Refuge: ${Math.round(b.refuge.integrity)}% intact.`);
+  if (b.refuge) {
+    const m = bt_hold_margin(b);
+    lines.push(`Refuge: ${Math.round(b.refuge.integrity)}% intact${m.inside ? `, ${m.inside} of the dead inside` : ''}.`);
+  }
   if (b.civ_total) lines.push(`Survivors brought out: ${b.saved} of ${b.civ_total}.`);
   return lines;
 }

@@ -76,9 +76,13 @@ is plain JSON, so a saved battle goes on exactly as it would have). Front-end: `
   shield squad 3, heavy weapon 4, scouts 2. Each objective offers a standard company to start from; the choice is kept for
   the next battle and stored in the save. The first squads take the posts nearest the danger.
 * **Orders**: tap a squad (or its card), then tap a tile or drag a route; *Fire at will* / *Hold fire*; *Walk* / *Run*
-  (nobody shoots while running); *Melee* instead of shooting (no ammunition, no shots: with no route the squad closes in on
-  the nearest enemy it can see, and blows count even against the head-shot dead); one special action: shield squads build a barricade (four quiet seconds, four per
-  battle), scouts throw a lure that calls the dead for two turns. Orders carry over between turns.
+  (nobody shoots while running); two hand-to-hand stances instead of shooting (no ammunition, no shots, and blows count even
+  against the head-shot dead): *Charge* (with no route the squad closes in on the nearest enemy it can see, and each man
+  goes for the closest one, formation or not) and *Hold ground* (nobody leaves the line; a man in his place strikes first,
+  with a longer reach, a quarter harder, and the dead land a fifth fewer bites on a squad standing still); *Retreat* (the squad
+  runs back to the refuge, else the nearest base you hold, else your own edge of the map, and turns to face what it left;
+  Walk after it makes it a fighting withdrawal); one special action: shield squads build a barricade (four quiet seconds, four per
+  battle; it stops the dead until they break it, and the living climb over it slowly, so it never walls your own men in), scouts throw a lure that calls the dead for two turns. Orders carry over between turns.
 * **Squads** come from the era (longbowmen and Greek fire in 1348, M16s and an M60 in 1986, pulse rifles in the station).
   Every shot is noise and noise brings the dead; accuracy falls with range; in the dark you see and shoot five tiles.
   Morale falls with losses and when the dead swarm a squad; a broken squad runs for safety until it rallies.
@@ -138,6 +142,12 @@ Engine: `src/campaign.js` (pure and deterministic like a battle, saved under `ou
   district is a real fight (bigger waves from three sides, more dead inside); factions field an extra squad and come back
   after a day. Losing a defence of Florida does not end it: home is sacked (half the supplies and recruits) and scarred (one
   level of the dead; a rest day cleans one).
+* **A night held is graded**: a Hold that reaches the last turn is won, but how it was won follows you. *Clean* (no dead
+  inside, the refuge at 60% or more) costs nothing. *Costly* (the dead got in, or the refuge is under 60%) costs two supplies
+  of repairs and, if the dead were inside, one recruit. *By a hair* (the dead inside would have finished the refuge within
+  one more turn, or it is under 25%) costs three supplies, a third of the recruits, a level of the dead in the district
+  (never past 2: a night that held never loses the barrio by itself) and the spoils of victory. The battle screen says
+  "The night held, barely" and how many seconds were left.
 * **Ammunition is the squad's own**: what it does not fire comes back to the campaign with it, and goes into the next fight;
   reloading between battles (Reorganizar) costs one supply for half a load. A squad with none left fights hand to hand.
 * **Restocking in the field is paid and optional**: in a campaign battle nothing restocks by itself. A squad inside the

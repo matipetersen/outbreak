@@ -186,12 +186,14 @@ function renderPanel() {
     const row = el('div', 'bt-row');
     row.append(btn('bt-seg' + (s.stance === 'fire' ? ' on' : ''), 'Fire at will', () => { bt_set(b, s.id, { stance: 'fire' }); renderPanel(); }),
       btn('bt-seg' + (s.stance === 'hold' ? ' on' : ''), 'Hold fire', () => { bt_set(b, s.id, { stance: 'hold' }); renderPanel(); }),
-      btn('bt-seg' + (s.stance === 'melee' ? ' on' : ''), 'Melee', () => { bt_set(b, s.id, { stance: 'melee' }); renderPanel(); }));
-    row.append(el('span', 'bt-gap'));
-    row.append(btn('bt-seg' + (s.pace === 'walk' ? ' on' : ''), 'Walk', () => { bt_set(b, s.id, { pace: 'walk' }); renderPanel(); }),
+      btn('bt-seg' + (s.stance === 'melee' ? ' on' : ''), 'Charge', () => { bt_set(b, s.id, { stance: 'melee' }); renderPanel(); }),
+      btn('bt-seg' + (s.stance === 'guard' ? ' on' : ''), 'Hold ground', () => { bt_set(b, s.id, { stance: 'guard' }); renderPanel(); }));
+    p.append(row);
+    const rowp = el('div', 'bt-row');
+    rowp.append(btn('bt-seg' + (s.pace === 'walk' ? ' on' : ''), 'Walk', () => { bt_set(b, s.id, { pace: 'walk' }); renderPanel(); }),
       btn('bt-seg' + (s.pace === 'run' ? ' on' : ''), 'Run', () => { bt_set(b, s.id, { pace: 'run' }); renderPanel(); }),
       btn('bt-seg' + (s.pace === 'sneak' ? ' on' : ''), 'Sneak', () => { bt_set(b, s.id, { pace: 'sneak' }); renderPanel(); }));
-    p.append(row);
+    p.append(rowp);
     const row2 = el('div', 'bt-row');
     const kind = BT_TYPES[s.type].ability, era = BT_ERAS[b.era];
     if (kind === 'lure') row2.append(btn('bt-seg' + (mode === 'ability' ? ' on' : ''), `Lure: ${era.lure} (${s.lures_left})`, () => { mode = mode === 'ability' ? null : 'ability'; renderPanel(); }));
@@ -204,9 +206,10 @@ function renderPanel() {
       const r = btn('bt-seg' + (why ? '' : ' on'), label, () => { if (!bt_restock(b, s.id)) { audio_play('pickup'); report = b.report.slice(); renderPanel(); } });
       r.disabled = !!why; row2.append(r);
     }
+    row2.append(btn('bt-seg', 'Retreat', () => { const why = bt_retreat(b, s.id); if (why) flash(why); else { mode = null; audio_play('order'); } renderPanel(); }));
     row2.append(btn('bt-seg', 'Stop', () => { bt_clear(b, s.id); mode = null; renderPanel(); }));
     p.append(row2);
-    p.append(el('div', 'bt-hint', mode === 'face' ? 'Tap the side they should watch. Fire from behind them hurts most; when they are on the move, they turn when they arrive.' : mode === 'ability' ? (kind === 'lure' ? 'Tap where the lure should go (within 10 tiles). The dead go to the noise for two turns.' : 'Tap a tile within 3 tiles of where the squad stops. They need 4 quiet seconds there to build it.')
+    p.append(el('div', 'bt-hint', mode === 'face' ? 'Tap the side they should watch. Fire from behind them hurts most; when they are on the move, they turn when they arrive.' : mode === 'ability' ? (kind === 'lure' ? 'Tap where the lure should go (within 10 tiles). The dead go to the noise for two turns.' : 'Tap a tile within 3 tiles of where the squad stops. They need 4 quiet seconds there to build it. It stops the dead; your own people can climb over it, slowly.')
       : s.state === 'broken' ? 'Broken: they run for safety and ignore orders until they rally. Anyone following them is left behind.'
       : b.civs.some((q) => q.follow === s.id) ? `${b.civs.filter((q) => q.follow === s.id).length} survivors follow this squad. Lead them into the green EXIT at the bottom; near it they run the last stretch themselves. They are slow: the squad waits for them.`
       : b.objective === 'rescue' && b.civs.some((q) => q.follow === null) ? `${cap(era.weapons[s.type])}. Send a squad to the door of a house marked SURVIVORS: they come out and follow it, and the noise draws the dead.`
@@ -271,7 +274,10 @@ function finishTurn() {
   playing = false; prev = new Map();
   report = b.report.slice();
   vis = bt_visibility(b);
-  if (b.over) { bt_delete_save(); audio_play(b.over.victory ? 'win' : 'lose'); showResult(); return; }
+  if (b.over) {                                                        // a campaign keeps the result until the map has counted it
+    if (b.cfg.campaign) bt_save(b); else bt_delete_save();
+    audio_play(b.over.victory ? 'win' : 'lose'); showResult(); return;
+  }
   if (!b.squads.some((s) => s.id === sel && s.men.length)) sel = (b.squads.find((s) => bt_mine(s) && s.men.length) || {}).id || null;
   bt_save(b);
   renderPanel();
@@ -297,7 +303,7 @@ function openMenu() {
   box.append(el('h2', 'end-title', 'Orders'), el('div', 'sum', [
     el('div', null, 'Each turn: give orders, then EXECUTE. Ten seconds of battle play out and you cannot intervene.'),
     el('div', null, 'Tap a squad, then tap a tile to send it there, or drag a route from it. Orders carry over to the next turn.'),
-    el('div', null, 'Fire at will kills, but every shot is noise and noise brings the dead. Hold fire to stay quiet. Melee: no ammunition, no shots; with no route the squad closes in on the nearest enemy it can see and each man goes for the closest one. Blows always count, even against the dead that only die to a head shot. A squad out of ammunition fights like this anyway.'),
+    el('div', null, 'Fire at will kills, but every shot is noise and noise brings the dead. Hold fire to stay quiet. Charge: hand to hand, no ammunition, no shots; with no route the squad closes in on the nearest enemy it can see and each man goes for the closest one, formation or not. Hold ground: hand to hand without leaving the line; nobody chases, and a man in his place strikes first (a longer reach), harder, and is harder to pull down. Blows always count, even against the dead that only die to a head shot. A squad out of ammunition fights like this anyway. Retreat: the squad runs back to the refuge, the nearest base you hold, or your own edge of the map, and turns to face what it left; pick Walk after it to fall back firing.'),
     el('div', null, 'Running is fast, but nobody shoots while running. Machine guns need a moment to set up.'),
     el('div', null, 'Morale falls when men die or the dead swarm a squad. A broken squad runs for safety until it rallies.'),
     el('div', null, 'Red arrows: where the dead you can see are heading. Red edge marks: where the next wave comes in.'),
@@ -589,9 +595,10 @@ function drawOrders(s, col, on) {
     if (s.ability.kind === 'barricade') c.strokeRect(x + 1, y + 1, ts - 2, ts - 2); else { c.beginPath(); c.arc(x + ts / 2, y + ts / 2, ts * .45, 0, 7); c.stroke(); }
     c.setLineDash([]);
   }
-  if (on && s.stance === 'hold') {
+  const tag = { hold: 'quiet', melee: 'charge', guard: 'hold' }[s.stance];
+  if (on && tag) {
     c.font = `${Math.max(9, Math.floor(ts * .5))}px ${MONO}`; c.fillStyle = col; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText('quiet', P(s.anchor[0]), Q(s.anchor[1]) - ts * .9);
+    c.fillText(tag, P(s.anchor[0]), Q(s.anchor[1]) - ts * .9);
   }
 }
 

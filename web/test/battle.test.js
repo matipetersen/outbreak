@@ -87,7 +87,7 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   OB.bt_begin_turn(b); ticks(b, 45);
   const k = OB.bt_idx(b, Math.floor(spot[0]), Math.floor(spot[1]));
   assert(b.barricades[k] > 0 && b.barricades_left === 3, 'it stands');
-  assert(!OB.bt_passable(b, spot[0], spot[1], 'h') && OB.bt_cost(b, k, 'z') > 1, 'nobody walks through; the dead can only break it');
+  assert(!OB.bt_passable(b, spot[0], spot[1], 'z') && OB.bt_cost(b, k, 'z') > 1 && OB.bt_cost(b, k, 'h') > 1, 'the dead can only break it; the living climb it, slowly');
   const fenceAt = b.tiles.indexOf(OB.BTILE.FENCE);
   if (fenceAt >= 0) {
     assert.strictEqual(OB.bt_cost(b, fenceAt, 'z'), Infinity, 'a fence stops the slow dead');
@@ -447,5 +447,32 @@ const placeMen = (b, s, x, y) => { s.anchor = [x, y]; s.path = []; for (const m 
   OB.bt_run_turn(b); b.zeds.length = 0; b.wave.count = 0; OB.bt_run_turn(b);
   assert(!b.over && b.reinf.sent === 1, 'no early win: a column came instead');
   assert(b.report.some((l) => /reinforcements arrive/.test(l)), 'and its arrival is in the report');
+}
+{ // retreat: back to the refuge (or a base you hold, or your own edge), running, turned to face what it left
+  const b = mk({ objective: 'hold' }), s = b.squads.find(OB.bt_mine), R = b.refuge;
+  placeMen(b, s, (R.x0 + R.x1) / 2 + 0.5, Math.max(1.5, R.y0 - 8));
+  assert.strictEqual(OB.bt_retreat(b, s.id), null);
+  const end = s.path[s.path.length - 1];
+  assert(OB.bt_in_refuge(b, Math.floor(end[0]), Math.floor(end[1])), 'into the refuge');
+  assert(s.pace === 'run' && s.face_to && s.face_to[1] < 0, 'running, and turned back toward the dead');
+  const t = mk({ objective: 'take', rivals: 'none' }), u = t.squads.find(OB.bt_mine);
+  placeMen(t, u, 12.5, 4.5);
+  for (const q of t.bases) q.owner = null;
+  assert.strictEqual(OB.bt_retreat(t, u.id), null);
+  assert(u.path[u.path.length - 1][1] > t.h - 4, 'nothing held: back to your own edge');
+  const q = t.bases[0]; q.owner = 'you';
+  assert.strictEqual(OB.bt_retreat(t, u.id), null);
+  const e = u.path[u.path.length - 1];
+  assert(e[0] >= q.x0 - 1 && e[0] <= q.x1 + 2 && e[1] >= q.y0 - 1 && e[1] <= q.y1 + 2, 'to the base you hold');
+}
+{ // your own barricades never wall your men in: they climb over, slowly; the dead still have to break them
+  const b = mk({ objective: 'hold' }), R = b.refuge, s = b.squads.find(OB.bt_mine);
+  for (let y = R.y0 - 1; y <= R.y1 + 1; y++) for (let x = R.x0 - 1; x <= R.x1 + 1; x++) if (OB.bt_in(b, x, y) && b.tiles[OB.bt_idx(b, x, y)] === OB.BTILE.DOOR) b.barricades[OB.bt_idx(b, x, y)] = 70;
+  OB.bt_invalidate(b);
+  placeMen(b, s, (R.x0 + R.x1) / 2 + 0.5, (R.y0 + R.y1) / 2 + 0.5);
+  assert(OB.bt_order_move(b, s.id, [[1.5, b.h - 1.5]]), 'out of the barricaded refuge');
+  const k = Object.keys(b.barricades)[0];
+  assert(OB.bt_cost(b, +k, 'h') > 1 && OB.bt_cost(b, +k, 'h') < Infinity && OB.bt_cost(b, +k, 'z') >= 14, 'a climb for the living, a wall to break for the dead');
+  assert(!OB.bt_passable(b, (+k % b.w) + 0.5, Math.floor(+k / b.w) + 0.5, 'z'));
 }
 console.log('battle tests passed');
