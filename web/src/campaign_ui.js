@@ -56,6 +56,7 @@ function resume() {
   if (cs.op) {                                              // a battle was in progress
     const b = bt_load();
     if (b && b.cfg.campaign && !b.over) { window.OB_BATTLE.start(b); return; }
+    if (b && b.cfg.campaign && b.over) { battleOver(b); return; }     // it ended, but the map never counted it
     cp_finish_battle(cs, null);                              // its save is gone: it counts as a retreat
     cp_save(cs);
   }

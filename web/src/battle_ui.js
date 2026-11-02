@@ -274,7 +274,10 @@ function finishTurn() {
   playing = false; prev = new Map();
   report = b.report.slice();
   vis = bt_visibility(b);
-  if (b.over) { bt_delete_save(); audio_play(b.over.victory ? 'win' : 'lose'); showResult(); return; }
+  if (b.over) {                                                        // a campaign keeps the result until the map has counted it
+    if (b.cfg.campaign) bt_save(b); else bt_delete_save();
+    audio_play(b.over.victory ? 'win' : 'lose'); showResult(); return;
+  }
   if (!b.squads.some((s) => s.id === sel && s.men.length)) sel = (b.squads.find((s) => bt_mine(s) && s.men.length) || {}).id || null;
   bt_save(b);
   renderPanel();
